@@ -54,7 +54,7 @@ export const ErrorDataTable = ({
 				data: processedData.error_types,
 				columns: createErrorTypeColumns(),
 				getFilter: (row: ErrorType) => ({
-					field: "error_type",
+					field: "message",
 					value: row.name,
 				}),
 			},
