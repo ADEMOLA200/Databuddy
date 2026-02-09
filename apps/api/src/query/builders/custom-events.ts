@@ -171,7 +171,7 @@ export const CustomEventsBuilders: Record<string, SimpleQueryConfig> = {
 			};
 		},
 		timeField: "timestamp",
-		allowedFilters: ["path", "event_name"],
+		allowedFilters: ["path", "event_name", "website_id"],
 		customizable: true,
 	},
 
@@ -223,7 +223,7 @@ export const CustomEventsBuilders: Record<string, SimpleQueryConfig> = {
 			};
 		},
 		timeField: "timestamp",
-		allowedFilters: ["path", "event_name"],
+		allowedFilters: ["path", "event_name", "website_id"],
 	},
 
 	custom_events_summary: {
@@ -268,7 +268,7 @@ export const CustomEventsBuilders: Record<string, SimpleQueryConfig> = {
 			};
 		},
 		timeField: "timestamp",
-		allowedFilters: ["path", "event_name"],
+		allowedFilters: ["path", "event_name", "website_id"],
 	},
 
 	custom_events_property_cardinality: {
@@ -334,7 +334,7 @@ export const CustomEventsBuilders: Record<string, SimpleQueryConfig> = {
 			};
 		},
 		timeField: "timestamp",
-		allowedFilters: ["path", "event_name"],
+		allowedFilters: ["path", "event_name", "website_id"],
 	},
 
 	custom_events_recent: {
@@ -389,7 +389,7 @@ export const CustomEventsBuilders: Record<string, SimpleQueryConfig> = {
 			};
 		},
 		timeField: "timestamp",
-		allowedFilters: ["path", "event_name"],
+		allowedFilters: ["path", "event_name", "website_id"],
 	},
 
 	/**
@@ -535,7 +535,7 @@ export const CustomEventsBuilders: Record<string, SimpleQueryConfig> = {
 			};
 		},
 		timeField: "timestamp",
-		allowedFilters: ["path", "event_name"],
+		allowedFilters: ["path", "event_name", "website_id"],
 	},
 
 	/**
@@ -621,7 +621,7 @@ export const CustomEventsBuilders: Record<string, SimpleQueryConfig> = {
 			};
 		},
 		timeField: "timestamp",
-		allowedFilters: ["path", "event_name"],
+		allowedFilters: ["path", "event_name", "website_id"],
 	},
 
 	/**
@@ -705,6 +705,6 @@ export const CustomEventsBuilders: Record<string, SimpleQueryConfig> = {
 			};
 		},
 		timeField: "timestamp",
-		allowedFilters: ["path", "event_name"],
+		allowedFilters: ["path", "event_name", "website_id"],
 	},
 };

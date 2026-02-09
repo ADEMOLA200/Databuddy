@@ -1,5 +1,6 @@
 "use client";
 
+import type { DynamicQueryFilter } from "@databuddy/shared/types/api";
 import dayjs from "dayjs";
 import {
 	createContext,
@@ -14,13 +15,21 @@ import { useWebsitesLight } from "@/hooks/use-websites";
 
 type RefreshFn = () => void;
 
+/**
+ * "no-website" = events not tied to any website (default)
+ * "all" = all events across the organization
+ * string = a specific websiteId
+ */
+export type WebsiteFilterMode = "no-website" | "all" | string;
+
 interface EventsPageContextValue {
-	selectedWebsiteId: string | null;
-	setSelectedWebsiteId: (id: string | null) => void;
+	websiteFilterMode: WebsiteFilterMode;
+	setWebsiteFilterMode: (mode: WebsiteFilterMode) => void;
 	selectedWebsite: { id: string; name: string; domain: string } | undefined;
 	websites: Array<{ id: string; name: string; domain: string }>;
 	isLoadingWebsites: boolean;
 	queryOptions: { websiteId?: string; organizationId?: string };
+	websiteFilters: DynamicQueryFilter[];
 	hasQueryId: boolean;
 	dateRange: {
 		start_date: string;
@@ -50,9 +59,8 @@ export function EventsPageProvider({
 	const { activeOrganization, isLoading: isLoadingOrg } =
 		useOrganizationsContext();
 	const { websites, isLoading: isLoadingWebsites } = useWebsitesLight();
-	const [selectedWebsiteId, setSelectedWebsiteId] = useState<string | null>(
-		null
-	);
+	const [websiteFilterMode, setWebsiteFilterMode] =
+		useState<WebsiteFilterMode>("no-website");
 	const [isFetching, setIsFetching] = useState(false);
 	const refreshFnsRef = useRef<Set<RefreshFn>>(new Set());
 
@@ -69,27 +77,40 @@ export function EventsPageProvider({
 		}
 	}, []);
 
+	const isSpecificWebsite =
+		websiteFilterMode !== "no-website" && websiteFilterMode !== "all";
+
 	const queryOptions = useMemo(() => {
-		if (selectedWebsiteId) {
-			return { websiteId: selectedWebsiteId };
+		if (isSpecificWebsite) {
+			return { websiteId: websiteFilterMode };
 		}
 		if (activeOrganization?.id) {
 			return { organizationId: activeOrganization.id };
 		}
 		return {};
-	}, [selectedWebsiteId, activeOrganization?.id]);
+	}, [isSpecificWebsite, websiteFilterMode, activeOrganization?.id]);
 
-	const hasQueryId = !!(selectedWebsiteId || activeOrganization?.id);
-	const selectedWebsite = websites.find((w) => w.id === selectedWebsiteId);
+	const websiteFilters = useMemo<DynamicQueryFilter[]>(() => {
+		if (websiteFilterMode === "no-website") {
+			return [{ field: "website_id", operator: "eq", value: "" }];
+		}
+		return [];
+	}, [websiteFilterMode]);
+
+	const hasQueryId = !!(isSpecificWebsite || activeOrganization?.id);
+	const selectedWebsite = isSpecificWebsite
+		? websites.find((w) => w.id === websiteFilterMode)
+		: undefined;
 
 	const value = useMemo(
 		() => ({
-			selectedWebsiteId,
-			setSelectedWebsiteId,
+			websiteFilterMode,
+			setWebsiteFilterMode,
 			selectedWebsite,
 			websites,
 			isLoadingWebsites,
 			queryOptions,
+			websiteFilters,
 			hasQueryId,
 			dateRange: DEFAULT_DATE_RANGE,
 			isLoadingOrg,
@@ -99,11 +120,12 @@ export function EventsPageProvider({
 			setIsFetching,
 		}),
 		[
-			selectedWebsiteId,
+			websiteFilterMode,
 			selectedWebsite,
 			websites,
 			isLoadingWebsites,
 			queryOptions,
+			websiteFilters,
 			hasQueryId,
 			isLoadingOrg,
 			registerRefresh,

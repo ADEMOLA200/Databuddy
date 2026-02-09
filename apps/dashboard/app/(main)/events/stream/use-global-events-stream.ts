@@ -1,5 +1,8 @@
 import type { DateRange } from "@databuddy/shared/types/analytics";
-import type { BatchQueryResponse } from "@databuddy/shared/types/api";
+import type {
+	BatchQueryResponse,
+	DynamicQueryFilter,
+} from "@databuddy/shared/types/api";
 import type { UseQueryOptions } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useBatchDynamicQuery } from "@/hooks/use-dynamic-query";
@@ -35,28 +38,30 @@ function parseEventProperties(
 export function useGlobalEventsStream(
 	queryOptions: QueryOptions,
 	dateRange: DateRange,
+	filters: DynamicQueryFilter[] = [],
 	limit = 50,
 	page = 1,
 	options?: Partial<UseQueryOptions<BatchQueryResponse>>
 ) {
-	const { results, isLoading, isError, error, isFetching, refetch } =
-		useBatchDynamicQuery(
-			queryOptions,
-			dateRange,
-			[
-				{
-					id: "events-stream",
-					parameters: ["custom_events_recent"],
-					limit,
-					page,
-				},
-			],
+	const queries = useMemo(
+		() => [
 			{
-				...options,
-				staleTime: 30 * 1000,
-				gcTime: 5 * 60 * 1000,
-			}
-		);
+				id: "events-stream",
+				parameters: ["custom_events_recent"],
+				limit,
+				page,
+				filters,
+			},
+		],
+		[limit, page, filters]
+	);
+
+	const { results, isLoading, isError, error, isFetching, refetch } =
+		useBatchDynamicQuery(queryOptions, dateRange, queries, {
+			...options,
+			staleTime: 30 * 1000,
+			gcTime: 5 * 60 * 1000,
+		});
 
 	const events = useMemo(() => {
 		const streamResult = results?.find((r) => r.queryId === "events-stream");

@@ -9,14 +9,32 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEventsPageContext } from "./events-page-context";
 
+function getDropdownLabel(
+	websiteFilterMode: string,
+	selectedWebsite: { name: string; domain: string } | undefined
+) {
+	if (websiteFilterMode === "no-website") {
+		return "No Website";
+	}
+	if (websiteFilterMode === "all") {
+		return "All Websites";
+	}
+	if (selectedWebsite) {
+		return selectedWebsite.name || selectedWebsite.domain;
+	}
+	return "Unknown";
+}
+
 export function EventsPageHeader() {
 	const {
-		setSelectedWebsiteId,
+		websiteFilterMode,
+		setWebsiteFilterMode,
 		selectedWebsite,
 		websites,
 		isLoadingWebsites,
@@ -42,22 +60,30 @@ export function EventsPageHeader() {
 							>
 								{isLoadingWebsites ? (
 									<Skeleton className="h-4 w-20" />
-								) : selectedWebsite ? (
-									<span className="truncate">{selectedWebsite.name}</span>
 								) : (
-									<span>All Websites</span>
+									<span className="truncate">
+										{getDropdownLabel(websiteFilterMode, selectedWebsite)}
+									</span>
 								)}
 								<CaretDownIcon className="ml-2 size-4" weight="fill" />
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-[200px]">
-							<DropdownMenuItem onClick={() => setSelectedWebsiteId(null)}>
+							<DropdownMenuItem
+								onClick={() => setWebsiteFilterMode("no-website")}
+							>
+								No Website
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								onClick={() => setWebsiteFilterMode("all")}
+							>
 								All Websites
 							</DropdownMenuItem>
+							{websites.length > 0 && <DropdownMenuSeparator />}
 							{websites.map((website) => (
 								<DropdownMenuItem
 									key={website.id}
-									onClick={() => setSelectedWebsiteId(website.id)}
+									onClick={() => setWebsiteFilterMode(website.id)}
 								>
 									{website.name || website.domain}
 								</DropdownMenuItem>

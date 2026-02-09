@@ -135,8 +135,13 @@ function ActiveFilters({ filters }: { filters: ActiveFilter[] }) {
 }
 
 export default function EventsStreamPage() {
-	const { queryOptions, dateRange, hasQueryId, isLoadingOrg } =
-		useEventsPageContext();
+	const {
+		queryOptions,
+		websiteFilters,
+		dateRange,
+		hasQueryId,
+		isLoadingOrg,
+	} = useEventsPageContext();
 
 	const [page, setPage] = useState(1);
 	const [allEvents, setAllEvents] = useState<RecentCustomEvent[]>([]);
@@ -190,13 +195,13 @@ export default function EventsStreamPage() {
 	);
 
 	const { events, pagination, isLoading, isError, error } =
-		useGlobalEventsStream(queryOptions, dateRange, 50, page, {
+		useGlobalEventsStream(queryOptions, dateRange, websiteFilters, 50, page, {
 			enabled: hasQueryId,
 		});
 
 	const eventsKey = useMemo(
-		() => JSON.stringify({ dateRange, queryOptions }),
-		[dateRange, queryOptions]
+		() => JSON.stringify({ dateRange, queryOptions, websiteFilters }),
+		[dateRange, queryOptions, websiteFilters]
 	);
 
 	const prevEventsKeyRef = useRef(eventsKey);
