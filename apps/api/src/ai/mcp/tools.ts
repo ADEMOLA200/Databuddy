@@ -11,6 +11,10 @@ import {
 import { getWebsiteDomain, validateWebsite } from "../../lib/website-utils";
 import { executeBatch } from "../../query";
 import {
+	appendToConversation,
+	getConversationHistory,
+} from "./conversation-store";
+import {
 	buildBatchQueryRequests,
 	CLICKHOUSE_SCHEMA_DOCS,
 	getQueryTypeDescriptions,
@@ -18,10 +22,6 @@ import {
 	MCP_DATE_PRESETS,
 	type McpQueryItem,
 } from "./mcp-utils";
-import {
-	appendToConversation,
-	getConversationHistory,
-} from "./conversation-store";
 import { runMcpAgent } from "./run-agent";
 
 interface McpToolContext {
@@ -176,13 +176,9 @@ export function createMcpTools(ctx: McpToolContext) {
 						"Optional. Pass from previous ask response for follow-up questions to maintain conversation history."
 					),
 			}),
-			handler: async (args: {
-				question: string;
-				conversationId?: string;
-			}) => {
+			handler: async (args: { question: string; conversationId?: string }) => {
 				try {
-					const conversationId =
-						args.conversationId ?? crypto.randomUUID();
+					const conversationId = args.conversationId ?? crypto.randomUUID();
 					const priorMessages = await getConversationHistory(
 						conversationId,
 						ctx.userId,
@@ -194,8 +190,7 @@ export function createMcpTools(ctx: McpToolContext) {
 						requestHeaders: ctx.requestHeaders,
 						apiKey: ctx.apiKey,
 						userId: ctx.userId,
-						priorMessages:
-							priorMessages.length > 0 ? priorMessages : undefined,
+						priorMessages: priorMessages.length > 0 ? priorMessages : undefined,
 					});
 
 					await appendToConversation(

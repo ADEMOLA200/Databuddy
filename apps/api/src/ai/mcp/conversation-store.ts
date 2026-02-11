@@ -9,7 +9,10 @@ export interface ConversationMessage {
 	content: string;
 }
 
-function scopeFor(userId: string | null, apiKey: { id: string } | null): string {
+function scopeFor(
+	userId: string | null,
+	apiKey: { id: string } | null
+): string {
 	if (userId) {
 		return `user:${userId}`;
 	}
