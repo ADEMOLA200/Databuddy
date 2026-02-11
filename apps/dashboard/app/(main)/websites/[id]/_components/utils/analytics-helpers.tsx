@@ -8,6 +8,14 @@ dayjs.extend(relativeTime);
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+/** Bounce rate must be 0–100%. Clamp invalid values from bad data or miscalculations. */
+export function clampBounceRate(value: number | null | undefined): number {
+	if (value == null || Number.isNaN(value)) {
+		return 0;
+	}
+	return Math.max(0, Math.min(100, value));
+}
+
 type Granularity = "daily" | "hourly";
 
 interface DataItem {

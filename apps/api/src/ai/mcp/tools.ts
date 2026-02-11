@@ -231,23 +231,31 @@ export function createMcpTools(ctx: McpToolContext) {
 		get_data: {
 			description:
 				"Run analytics query(ies). Single: type + preset or from/to. Batch: queries array (2-10). Defaults to last_7d. Supports filters, groupBy, orderBy.",
-			inputSchema: z.object({
-				websiteId: z.string().describe("Website ID from list_websites"),
-				type: z
-					.string()
-					.optional()
-					.describe("Query type for single-query mode"),
-				...QueryItemSchema.omit({ type: true }).shape,
-				timezone: z.string().optional().default("UTC"),
-				queries: z
-					.preprocess(
+			inputSchema: z.union([
+				z.object({
+					websiteId: z.string().describe("Website ID from list_websites"),
+					queries: z.preprocess(
 						coerceQueriesArray,
-						z.array(QueryItemSchema).min(2).max(10).optional()
-					)
-					.describe(
-						"Batch: 2-10 queries (array or JSON string). Each needs type."
+						z.array(QueryItemSchema).min(2).max(10)
 					),
-			}),
+					timezone: z.string().optional().default("UTC"),
+				}),
+				z.object({
+					websiteId: z.string().describe("Website ID from list_websites"),
+					type: z.string().describe("Query type for single-query mode"),
+					preset: z
+						.enum(MCP_DATE_PRESETS as [string, ...string[]])
+						.optional(),
+					from: z.string().optional(),
+					to: z.string().optional(),
+					timeUnit: z.enum(TIME_UNIT).optional(),
+					limit: z.number().min(1).max(1000).optional(),
+					filters: z.array(FilterSchema).optional(),
+					groupBy: z.array(z.string()).optional(),
+					orderBy: z.string().optional(),
+					timezone: z.string().optional().default("UTC"),
+				}),
+			]),
 			handler: async (args: GetDataArgs) => {
 				const access = await ensureWebsiteAccess(
 					args.websiteId,
@@ -264,18 +272,18 @@ export function createMcpTools(ctx: McpToolContext) {
 						? args.queries
 						: args.type
 							? [
-									{
-										type: args.type,
-										preset: args.preset,
-										from: args.from,
-										to: args.to,
-										timeUnit: args.timeUnit,
-										limit: args.limit,
-										filters: args.filters,
-										groupBy: args.groupBy,
-										orderBy: args.orderBy,
-									},
-								]
+								{
+									type: args.type,
+									preset: args.preset,
+									from: args.from,
+									to: args.to,
+									timeUnit: args.timeUnit,
+									limit: args.limit,
+									filters: args.filters,
+									groupBy: args.groupBy,
+									orderBy: args.orderBy,
+								},
+							]
 							: [];
 
 				if (items.length === 0) {
@@ -303,21 +311,21 @@ export function createMcpTools(ctx: McpToolContext) {
 					return toMcpResult(
 						isBatch
 							? {
-									batch: true,
-									results: results.map((r) => ({
-										type: r.type,
-										data: r.data,
-										rowCount: r.data.length,
-										...(r.error && { error: "Query failed" }),
-									})),
-								}
+								batch: true,
+								results: results.map((r) => ({
+									type: r.type,
+									data: r.data,
+									rowCount: r.data.length,
+									...(r.error && { error: "Query failed" }),
+								})),
+							}
 							: results[0]
 								? {
-										data: results[0].data,
-										rowCount: results[0].data.length,
-										type: results[0].type,
-										...(results[0].error && { error: "Query failed" }),
-									}
+									data: results[0].data,
+									rowCount: results[0].data.length,
+									type: results[0].type,
+									...(results[0].error && { error: "Query failed" }),
+								}
 								: { error: "Query failed" }
 					);
 				} catch {
@@ -343,11 +351,13 @@ export function createMcpTools(ctx: McpToolContext) {
 					datePresets: MCP_DATE_PRESETS,
 					dateFormat: "YYYY-MM-DD",
 					maxLimit: 1000,
+					availableTools: ["ask", "list_websites", "get_data", "get_schema", "capabilities"],
 					hints: [
 						"list_websites first, then get_data",
-						"get_data defaults to last_7d when no dates",
-						"get_data queries array for batch (2-10)",
-						"get_schema for full ClickHouse docs",
+						"get_data batch: pass queries array (2-10 items, each with type + preset or from/to)",
+						"get_data single: pass type + preset (e.g. last_30d) OR type + from + to (YYYY-MM-DD)",
+						"get_data defaults to last_7d when preset/from/to omitted",
+						"get_schema returns full ClickHouse schema for custom SQL",
 						"ask returns conversationId - pass it for follow-up questions",
 					],
 				});

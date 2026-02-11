@@ -33,6 +33,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { metricVisibilityAtom } from "@/stores/jotai/chartAtoms";
 import {
 	calculatePercentChange,
+	clampBounceRate,
 	formatDateByGranularity,
 } from "../utils/analytics-helpers";
 import { PercentageBadge } from "../utils/technology-helpers";
@@ -453,7 +454,7 @@ export function WebsiteOverviewTab({
 							0,
 					}),
 					...(visibleMetrics.bounce_rate && {
-						bounce_rate: event.bounce_rate as number,
+						bounce_rate: clampBounceRate(event.bounce_rate as number),
 					}),
 					...(visibleMetrics.median_session_duration && {
 						median_session_duration: event.median_session_duration as number,
@@ -492,7 +493,7 @@ export function WebsiteOverviewTab({
 			sessions: createChartSeries("sessions"),
 			pageviews: createChartSeries("pageviews"),
 			pagesPerSession: createChartSeries("pages_per_session"),
-			bounceRate: createChartSeries("bounce_rate"),
+			bounceRate: createChartSeries("bounce_rate", clampBounceRate),
 			sessionDuration: createChartSeries(
 				"median_session_duration",
 				formatSessionDuration
@@ -711,7 +712,7 @@ export function WebsiteOverviewTab({
 			visitors: currentSummary.unique_visitors || 0,
 			sessions: currentSummary.sessions || 0,
 			pageviews: currentSummary.pageviews || 0,
-			bounceRate: currentSummary.bounce_rate || 0,
+			bounceRate: clampBounceRate(currentSummary.bounce_rate),
 			sessionDuration: currentSummary.median_session_duration || 0,
 			pagesPerSession: 0,
 		};
@@ -724,7 +725,7 @@ export function WebsiteOverviewTab({
 			visitors: previousSummary.unique_visitors || 0,
 			sessions: previousSummary.sessions || 0,
 			pageviews: previousSummary.pageviews || 0,
-			bounceRate: previousSummary.bounce_rate || 0,
+			bounceRate: clampBounceRate(previousSummary.bounce_rate),
 			sessionDuration: previousSummary.median_session_duration || 0,
 			pagesPerSession: 0,
 		};
@@ -876,7 +877,7 @@ export function WebsiteOverviewTab({
 						value:
 							analytics.summary?.bounce_rate != null &&
 							!Number.isNaN(analytics.summary.bounce_rate)
-								? `${analytics.summary.bounce_rate.toFixed(1)}%`
+								? `${clampBounceRate(analytics.summary.bounce_rate).toFixed(1)}%`
 								: "0%",
 						icon: CursorIcon,
 						chartData: miniChartData.bounceRate,

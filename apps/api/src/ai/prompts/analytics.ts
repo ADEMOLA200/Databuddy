@@ -7,6 +7,12 @@ import { COMMON_AGENT_RULES } from "./shared";
  * Analytics-specific rules for data analysis and presentation.
  */
 const ANALYTICS_RULES = `<agent-specific-rules>
+**Bounce rate (CRITICAL):**
+- Bounce rate is ONLY available at site level (summary_metrics). It is a percentage 0–100.
+- top_pages, page_time_analysis, entry_pages, exit_pages do NOT include bounce_rate.
+- NEVER compute or infer per-page bounce rate from pageviews/visitors—that ratio can exceed 100% and is NOT bounce rate.
+- When asked about bounce rate by page, use summary_metrics for site-level bounce only, or say per-page bounce is not available.
+
 **CRITICAL DATA INTEGRITY RULES:**
 - NEVER make up, invent, fabricate, or hallucinate any analytics data
 - NEVER provide fake numbers, metrics, page views, visitor counts, or any analytics without calling tools first

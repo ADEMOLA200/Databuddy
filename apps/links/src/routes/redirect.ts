@@ -22,6 +22,13 @@ const EXPIRED_URL = "https://app.databuddy.cc/dby/expired";
 const NOT_FOUND_URL = "https://app.databuddy.cc/dby/not-found";
 const PROXY_URL = "https://app.databuddy.cc/dby/l";
 
+const DEFAULT_RATE_LIMIT = {
+	success: true,
+	limit: 100,
+	remaining: 99,
+	reset: Date.now() + 60_000,
+};
+
 function generateETag(link: CachedLink, targetUrl: string): string {
 	const hash = createHash("md5")
 		.update(`${link.id}:${targetUrl}:${link.expiresAt ?? ""}`)
@@ -56,7 +63,7 @@ async function getLinkBySlug(slug: string): Promise<CachedLink | null> {
 	});
 
 	if (!dbLink) {
-		await setCachedLinkNotFound(slug).catch(() => {});
+		await setCachedLinkNotFound(slug).catch(() => { });
 		return null;
 	}
 
@@ -73,7 +80,7 @@ async function getLinkBySlug(slug: string): Promise<CachedLink | null> {
 		androidUrl: dbLink.androidUrl,
 	};
 
-	await setCachedLink(slug, link).catch(() => {});
+	await setCachedLink(slug, link).catch(() => { });
 	return link;
 }
 
@@ -83,7 +90,7 @@ async function recordClick(
 	ip: string,
 	request: Request
 ): Promise<void> {
-	const shouldRecord = await shouldRecordClick(link.id, ipHash);
+	const shouldRecord = await shouldRecordClick(link.id, ipHash).catch(() => true);
 	if (!shouldRecord) {
 		return;
 	}
@@ -120,8 +127,10 @@ export const redirectRoute = new Elysia().get(
 
 		setAttributes({ link_slug: slug });
 
-		// Rate limit check
-		const rl = await rateLimit(`redirect:${ipHash}`, 100, 60);
+		// Rate limit: allow through if Redis fails
+		const rl = await rateLimit(`redirect:${ipHash}`, 100, 60).catch(
+			() => DEFAULT_RATE_LIMIT
+		);
 		const headers = getRateLimitHeaders(rl);
 
 		if (!rl.success) {

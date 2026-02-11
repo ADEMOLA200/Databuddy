@@ -123,7 +123,7 @@ export const SummaryBuilders: Record<string, SimpleQueryConfig> = {
 					FROM base_events
 				)
 				SELECT ea.pageviews, ea.unique_visitors, countIf(sa.page_count >= 1) as sessions,
-					round(countIf(sa.page_count = 1 AND sa.duration < 10 AND sa.engagement_count = 0) * 100.0 / nullIf(countIf(sa.page_count >= 1), 0), 2) as bounce_rate,
+					least(100, round(countIf(sa.page_count = 1 AND sa.duration < 10 AND sa.engagement_count = 0) * 100.0 / nullIf(countIf(sa.page_count >= 1), 0), 2)) as bounce_rate,
 					round(medianIf(sa.duration, sa.page_count >= 1 AND sa.duration >= 0), 2) as median_session_duration,
 					ea.total_events
 				FROM session_agg sa
@@ -319,7 +319,7 @@ export const SummaryBuilders: Record<string, SimpleQueryConfig> = {
 				)
 				SELECT ${dateFormat} as date, ea.pageviews, ea.visitors,
 					count(sa.session_id) as sessions,
-					round(countIf(sa.page_count = 1 AND sa.duration < 10 AND sa.engagement_count = 0) * 100.0 / nullIf(count(sa.session_id), 0), 2) as bounce_rate,
+					least(100, round(countIf(sa.page_count = 1 AND sa.duration < 10 AND sa.engagement_count = 0) * 100.0 / nullIf(count(sa.session_id), 0), 2)) as bounce_rate,
 					round(medianIf(sa.duration, sa.duration >= 0), 2) as median_session_duration,
 					round(ea.pageviews * 1.0 / nullIf(count(sa.session_id), 0), 2) as pages_per_session
 				FROM event_agg ea
