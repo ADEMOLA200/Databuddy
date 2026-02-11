@@ -1,5 +1,6 @@
 "use client";
 
+import { API_SCOPES, type ApiScope } from "@databuddy/api-keys/scopes";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	ArrowsClockwiseIcon,
@@ -10,7 +11,7 @@ import {
 	ProhibitIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -37,13 +38,24 @@ interface ApiKeyDetailDialogProps {
 	onOpenChangeAction: (open: boolean) => void;
 }
 
+const scopeSchema = z.enum(API_SCOPES);
 const formSchema = z.object({
 	name: z.string().min(1, "Name is required"),
 	enabled: z.boolean(),
 	expiresAt: z.string().optional(),
+	scopes: z.array(scopeSchema),
 });
 
 type FormData = z.infer<typeof formSchema>;
+
+function getEffectiveScopes(
+	key: ApiKeyListItem | { scopes: string[] }
+): ApiScope[] {
+	const scopes = key.scopes ?? [];
+	return scopes.filter((s) =>
+		API_SCOPES.includes(s as ApiScope)
+	) as ApiScope[];
+}
 
 export function ApiKeyDetailDialog({
 	apiKey,
@@ -55,20 +67,33 @@ export function ApiKeyDetailDialog({
 	const [copied, setCopied] = useState(false);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-	const form = useForm<FormData>({
-		resolver: zodResolver(formSchema),
-		defaultValues: { name: "", enabled: true, expiresAt: "" },
+	const { data: fullKey } = useQuery({
+		...orpc.apikeys.getById.queryOptions({ input: { id: apiKey?.id ?? "" } }),
+		enabled: !!apiKey?.id && open,
 	});
 
+	const form = useForm<FormData>({
+		resolver: zodResolver(formSchema),
+		defaultValues: {
+			name: "",
+			enabled: true,
+			expiresAt: "",
+			scopes: [] as ApiScope[],
+		},
+	});
+
+	const displayKey = fullKey ?? apiKey;
+
 	useEffect(() => {
-		if (apiKey) {
+		if (displayKey) {
 			form.reset({
-				name: apiKey.name,
-				enabled: apiKey.enabled && !apiKey.revokedAt,
-				expiresAt: apiKey.expiresAt?.slice(0, 10) ?? "",
+				name: displayKey.name,
+				enabled: displayKey.enabled && !displayKey.revokedAt,
+				expiresAt: displayKey.expiresAt?.slice(0, 10) ?? "",
+				scopes: getEffectiveScopes(displayKey),
 			});
 		}
-	}, [apiKey, form]);
+	}, [displayKey, form]);
 
 	const handleClose = () => {
 		onOpenChangeAction(false);
@@ -81,6 +106,19 @@ export function ApiKeyDetailDialog({
 
 	const invalidateQueries = () => {
 		queryClient.invalidateQueries({ queryKey: orpc.apikeys.list.key() });
+		if (apiKey?.id) {
+			queryClient.invalidateQueries({
+				queryKey: orpc.apikeys.getById.key({ input: { id: apiKey.id } }),
+			});
+		}
+	};
+
+	const toggleScope = (scope: ApiScope) => {
+		const current = form.getValues("scopes") as ApiScope[];
+		const next = current.includes(scope)
+			? current.filter((s) => s !== scope)
+			: [...current, scope];
+		form.setValue("scopes", next);
 	};
 
 	const updateMutation = useMutation({
@@ -121,12 +159,29 @@ export function ApiKeyDetailDialog({
 		if (!apiKey) {
 			return;
 		}
-		updateMutation.mutate({
+		const payload: Parameters<
+			typeof updateMutation.mutate
+		>[0] = {
 			id: apiKey.id,
 			name: values.name,
 			enabled: values.enabled,
 			expiresAt: values.expiresAt || null,
-		});
+		};
+		const scopes = values.scopes ?? [];
+		if (fullKey?.resources !== undefined) {
+			const existing = fullKey.resources as Record<string, ApiScope[]>;
+			const websiteResources = Object.fromEntries(
+				Object.entries(existing).filter(([k]) => k !== "global")
+			) as Record<string, ApiScope[]>;
+			payload.scopes = [];
+			payload.resources = {
+				...websiteResources,
+				...(scopes.length > 0 && { global: scopes }),
+			};
+		} else {
+			payload.scopes = scopes;
+		}
+		updateMutation.mutate(payload);
 	});
 
 	const isActive = apiKey?.enabled && !apiKey?.revokedAt;
@@ -250,14 +305,22 @@ export function ApiKeyDetailDialog({
 										<Label className="font-medium text-muted-foreground text-xs uppercase">
 											Permissions
 										</Label>
+										<p className="text-muted-foreground text-xs">
+											Changes take effect immediately and may affect integrations
+										</p>
 										<div className="rounded border bg-card p-1">
 											<div className="grid grid-cols-2 gap-1">
 												{SCOPE_OPTIONS.map((scope) => {
-													const hasScope = apiKey.scopes.includes(scope.value);
+												const selectedScopes = form.watch(
+													"scopes"
+												) as ApiScope[];
+													const hasScope = selectedScopes.includes(scope.value);
 													return (
-														<div
-															className="flex items-center gap-2 rounded px-3 py-2.5 text-sm"
+														<button
+															className="flex items-center gap-2 rounded px-3 py-2.5 text-left text-sm hover:bg-muted/50"
 															key={scope.value}
+															onClick={() => toggleScope(scope.value)}
+															type="button"
 														>
 															<div
 																className={`flex size-4 shrink-0 items-center justify-center rounded-sm border ${
@@ -275,7 +338,7 @@ export function ApiKeyDetailDialog({
 																)}
 															</div>
 															<span className="truncate">{scope.label}</span>
-														</div>
+														</button>
 													);
 												})}
 											</div>

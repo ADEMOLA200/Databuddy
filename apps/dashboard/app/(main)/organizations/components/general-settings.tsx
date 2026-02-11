@@ -1,7 +1,12 @@
 "use client";
 
-import { BuildingsIcon, FloppyDiskIcon } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import {
+	BuildingsIcon,
+	CheckIcon,
+	CopyIcon,
+	FloppyDiskIcon,
+} from "@phosphor-icons/react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { RightSidebar } from "@/components/right-sidebar";
 import { Button } from "@/components/ui/button";
@@ -18,8 +23,16 @@ export function GeneralSettings({
 	const [name, setName] = useState(organization.name);
 	const [slug, setSlug] = useState(organization.slug);
 	const [isSaving, setIsSaving] = useState(false);
+	const [copiedOrgId, setCopiedOrgId] = useState(false);
 
 	const { updateOrganization } = useOrganizations();
+
+	const handleCopyOrgId = useCallback(async () => {
+		await navigator.clipboard.writeText(organization.id);
+		setCopiedOrgId(true);
+		toast.success("Organization ID copied to clipboard");
+		setTimeout(() => setCopiedOrgId(false), 2000);
+	}, [organization.id]);
 
 	useEffect(() => {
 		setName(organization.name);
@@ -89,6 +102,36 @@ export function GeneralSettings({
 							<p className="text-muted-foreground text-xs">
 								Manage your organization's basic information and identifier
 							</p>
+						</div>
+						{/* Organization ID */}
+						<div className="mb-4 flex items-center justify-between gap-3">
+							<div className="min-w-0 flex-1">
+								<Label className="block font-medium text-sm">
+									Organization ID
+								</Label>
+								<p className="mt-1 truncate font-mono text-muted-foreground text-sm">
+									{organization.id}
+								</p>
+							</div>
+							<Button
+								aria-label="Copy organization ID"
+								onClick={handleCopyOrgId}
+								size="sm"
+								type="button"
+								variant="secondary"
+							>
+								{copiedOrgId ? (
+									<>
+										<CheckIcon className="size-3.5" weight="bold" />
+										Copied
+									</>
+								) : (
+									<>
+										<CopyIcon className="size-3.5" weight="duotone" />
+										Copy
+									</>
+								)}
+							</Button>
 						</div>
 						<div className="grid gap-4 sm:grid-cols-2">
 							<div className="space-y-2">

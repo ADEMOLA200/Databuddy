@@ -331,7 +331,7 @@ export const apikeysRouter = {
 				.returning();
 
 			// Invalidate cache for the API key
-			await invalidateCacheableKey("getCachedApiKeyByHash", updated.keyHash);
+			await invalidateCacheableKey("api-key-by-hash", updated.keyHash);
 
 			return mapKey(updated);
 		}),
@@ -355,7 +355,7 @@ export const apikeysRouter = {
 				.where(eq(apikey.id, input.id));
 
 			// Invalidate cache for the revoked API key
-			await invalidateCacheableKey("getCachedApiKeyByHash", key.keyHash);
+			await invalidateCacheableKey("api-key-by-hash", key.keyHash);
 
 			return { success: true };
 		}),
@@ -403,8 +403,8 @@ export const apikeysRouter = {
 
 			// Invalidate cache for both old and new key hash
 			await Promise.all([
-				invalidateCacheableKey("getCachedApiKeyByHash", key.keyHash),
-				invalidateCacheableKey("getCachedApiKeyByHash", updated.keyHash),
+				invalidateCacheableKey("api-key-by-hash", key.keyHash),
+				invalidateCacheableKey("api-key-by-hash", updated.keyHash),
 			]);
 
 			return {
@@ -431,7 +431,7 @@ export const apikeysRouter = {
 			await context.db.delete(apikey).where(eq(apikey.id, input.id));
 
 			// Invalidate cache for the deleted API key
-			await invalidateCacheableKey("getCachedApiKeyByHash", key.keyHash);
+			await invalidateCacheableKey("api-key-by-hash", key.keyHash);
 
 			return { success: true };
 		}),
