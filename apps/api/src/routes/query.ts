@@ -21,6 +21,7 @@ import {
 	hasKeyScope,
 	isApiKeyPresent,
 } from "../lib/api-key";
+import { resolveDatePreset } from "../lib/date-presets";
 import { record, setAttributes } from "../lib/tracing";
 import { getCachedWebsiteDomain, getWebsiteDomain } from "../lib/website-utils";
 import { compileQuery, executeBatch } from "../query";
@@ -30,7 +31,6 @@ import type { Filter, QueryRequest } from "../query/types";
 import {
 	CompileRequestSchema,
 	type CompileRequestType,
-	type DatePreset,
 	DatePresets,
 	DynamicQueryRequestSchema,
 	type DynamicQueryRequestType,
@@ -61,81 +61,6 @@ function normalizeDate(input: string): string {
 	}
 	// Return as-is (will fail validation)
 	return input;
-}
-
-// ============================================================================
-// Date Preset Resolution
-// ============================================================================
-
-function resolveDatePreset(
-	preset: DatePreset,
-	timezone: string
-): { startDate: string; endDate: string } {
-	const now = new Date();
-	const today = new Date(
-		now.toLocaleDateString("en-CA", { timeZone: timezone })
-	);
-	const formatDate = (d: Date) => d.toISOString().split("T")[0] as string;
-
-	switch (preset) {
-		case "today":
-			return { startDate: formatDate(today), endDate: formatDate(today) };
-		case "yesterday": {
-			const yesterday = new Date(today);
-			yesterday.setDate(yesterday.getDate() - 1);
-			return {
-				startDate: formatDate(yesterday),
-				endDate: formatDate(yesterday),
-			};
-		}
-		case "last_7d": {
-			const start = new Date(today);
-			start.setDate(start.getDate() - 6);
-			return { startDate: formatDate(start), endDate: formatDate(today) };
-		}
-		case "last_14d": {
-			const start = new Date(today);
-			start.setDate(start.getDate() - 13);
-			return { startDate: formatDate(start), endDate: formatDate(today) };
-		}
-		case "last_30d": {
-			const start = new Date(today);
-			start.setDate(start.getDate() - 29);
-			return { startDate: formatDate(start), endDate: formatDate(today) };
-		}
-		case "last_90d": {
-			const start = new Date(today);
-			start.setDate(start.getDate() - 89);
-			return { startDate: formatDate(start), endDate: formatDate(today) };
-		}
-		case "this_week": {
-			const start = new Date(today);
-			start.setDate(start.getDate() - start.getDay());
-			return { startDate: formatDate(start), endDate: formatDate(today) };
-		}
-		case "last_week": {
-			const end = new Date(today);
-			end.setDate(end.getDate() - end.getDay() - 1);
-			const start = new Date(end);
-			start.setDate(start.getDate() - 6);
-			return { startDate: formatDate(start), endDate: formatDate(end) };
-		}
-		case "this_month": {
-			const start = new Date(today.getFullYear(), today.getMonth(), 1);
-			return { startDate: formatDate(start), endDate: formatDate(today) };
-		}
-		case "last_month": {
-			const end = new Date(today.getFullYear(), today.getMonth(), 0);
-			const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-			return { startDate: formatDate(start), endDate: formatDate(end) };
-		}
-		case "this_year": {
-			const start = new Date(today.getFullYear(), 0, 1);
-			return { startDate: formatDate(start), endDate: formatDate(today) };
-		}
-		default:
-			return { startDate: formatDate(today), endDate: formatDate(today) };
-	}
 }
 
 // ============================================================================
@@ -319,16 +244,16 @@ type ProjectType = "website" | "schedule" | "link" | "organization";
 
 type ProjectAccessResult =
 	| {
-			success: true;
-			projectId: string;
-			projectType: ProjectType;
-	  }
+		success: true;
+		projectId: string;
+		projectType: ProjectType;
+	}
 	| {
-			success: false;
-			error: string;
-			code: string;
-			status?: number;
-	  };
+		success: false;
+		error: string;
+		code: string;
+		status?: number;
+	};
 
 function createAuthFailedResponse(requestId: string): Response {
 	return new Response(
@@ -752,12 +677,12 @@ function getTimeUnit(
 type ParameterInput =
 	| string
 	| {
-			name: string;
-			start_date?: string;
-			end_date?: string;
-			granularity?: string;
-			id?: string;
-	  };
+		name: string;
+		start_date?: string;
+		end_date?: string;
+		granularity?: string;
+		id?: string;
+	};
 
 function parseQueryParameter(param: ParameterInput) {
 	if (typeof param === "string") {

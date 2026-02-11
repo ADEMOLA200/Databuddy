@@ -77,38 +77,18 @@ export const mcp = new Elysia({ prefix: "/v1/mcp" })
 			{ capabilities: { tools: {} } }
 		);
 
-		mcpServer.registerTool(
-			"ask",
-			{
-				description: tools.ask.description,
-				inputSchema: tools.ask.inputSchema as unknown as AnySchema,
-			},
-			tools.ask.handler
-		);
-		mcpServer.registerTool(
-			"list_websites",
-			{
-				description: tools.list_websites.description,
-				inputSchema: tools.list_websites.inputSchema as unknown as AnySchema,
-			},
-			tools.list_websites.handler
-		);
-		mcpServer.registerTool(
-			"get_data",
-			{
-				description: tools.get_data.description,
-				inputSchema: tools.get_data.inputSchema as unknown as AnySchema,
-			},
-			tools.get_data.handler
-		);
-		mcpServer.registerTool(
-			"capabilities",
-			{
-				description: tools.capabilities.description,
-				inputSchema: tools.capabilities.inputSchema as unknown as AnySchema,
-			},
-			tools.capabilities.handler
-		);
+		const toolIds = ["ask", "list_websites", "get_data", "get_schema", "capabilities"] as const;
+		for (const id of toolIds) {
+			const t = tools[id];
+			mcpServer.registerTool(
+				id,
+				{
+					description: t.description,
+					inputSchema: t.inputSchema as unknown as AnySchema,
+				},
+				t.handler
+			);
+		}
 
 		const transport = new WebStandardStreamableHTTPServerTransport({
 			sessionIdGenerator: undefined,
@@ -119,3 +99,4 @@ export const mcp = new Elysia({ prefix: "/v1/mcp" })
 		await mcpServer.close();
 		return response;
 	});
+	

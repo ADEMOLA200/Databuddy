@@ -9,8 +9,15 @@ import {
 	hasWebsiteScope,
 } from "../../lib/api-key";
 import { getWebsiteDomain, validateWebsite } from "../../lib/website-utils";
-import { executeQuery, QueryBuilders } from "../../query";
-import type { QueryRequest } from "../../query/types";
+import { executeBatch } from "../../query";
+import {
+	buildBatchQueryRequests,
+	CLICKHOUSE_SCHEMA_DOCS,
+	getQueryTypeDescriptions,
+	getSchemaSummary,
+	MCP_DATE_PRESETS,
+	type McpQueryItem,
+} from "./mcp-utils";
 import { runMcpAgent } from "./run-agent";
 
 interface McpToolContext {
@@ -66,6 +73,77 @@ async function ensureWebsiteAccess(
 	return { domain: website.domain ?? "unknown" };
 }
 
+const TIME_UNIT = ["minute", "hour", "day", "week", "month"] as const;
+type TimeUnit = (typeof TIME_UNIT)[number];
+
+const FilterSchema = z.object({
+	field: z.string(),
+	op: z.enum([
+		"eq",
+		"ne",
+		"contains",
+		"not_contains",
+		"starts_with",
+		"in",
+		"not_in",
+	]),
+	value: z.union([
+		z.string(),
+		z.number(),
+		z.array(z.union([z.string(), z.number()])),
+	]),
+	target: z.string().optional(),
+	having: z.boolean().optional(),
+});
+
+const QueryItemSchema = z.object({
+	type: z.string(),
+	preset: z.enum(MCP_DATE_PRESETS as [string, ...string[]]).optional(),
+	from: z.string().optional(),
+	to: z.string().optional(),
+	timeUnit: z.enum(TIME_UNIT).optional(),
+	limit: z.number().min(1).max(1000).optional(),
+	filters: z.array(FilterSchema).optional(),
+	groupBy: z.array(z.string()).optional(),
+	orderBy: z.string().optional(),
+});
+
+function coerceQueriesArray(val: unknown): unknown[] | undefined {
+	if (Array.isArray(val)) {
+		return val;
+	}
+	if (typeof val === "string") {
+		try {
+			const parsed = JSON.parse(val) as unknown;
+			return Array.isArray(parsed) ? parsed : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+	return undefined;
+}
+
+interface GetDataArgs {
+	websiteId: string;
+	type?: string;
+	preset?: (typeof MCP_DATE_PRESETS)[number];
+	from?: string;
+	to?: string;
+	timeUnit?: TimeUnit;
+	limit?: number;
+	timezone?: string;
+	filters?: Array<{
+		field: string;
+		op: string;
+		value: string | number | (string | number)[];
+		target?: string;
+		having?: boolean;
+	}>;
+	groupBy?: string[];
+	orderBy?: string;
+	queries?: McpQueryItem[];
+}
+
 function toMcpResult(data: unknown, isError = false): CallToolResult {
 	return {
 		content: [
@@ -97,13 +175,8 @@ export function createMcpTools(ctx: McpToolContext) {
 						userId: ctx.userId,
 					});
 					return toMcpResult({ answer });
-				} catch (error) {
-					return toMcpResult(
-						{
-							error: error instanceof Error ? error.message : "Agent failed",
-						},
-						true
-					);
+				} catch {
+					return toMcpResult({ error: "Agent failed" }, true);
 				}
 			},
 		},
@@ -130,86 +203,122 @@ export function createMcpTools(ctx: McpToolContext) {
 		},
 		get_data: {
 			description:
-				"Run a pre-built analytics query and return structured JSON. Use websiteId from list_websites. Common types: traffic, top_pages, sessions, summary_metrics, devices, geo. Call capabilities for full list.",
+				"Run analytics query(ies). Single: type + preset or from/to. Batch: queries array (2-10). Defaults to last_7d. Supports filters, groupBy, orderBy.",
 			inputSchema: z.object({
 				websiteId: z.string().describe("Website ID from list_websites"),
-				type: z
-					.string()
-					.describe("Query type (e.g. traffic, top_pages, sessions)"),
-				from: z.string().describe("Start date YYYY-MM-DD"),
-				to: z.string().describe("End date YYYY-MM-DD"),
-				timeUnit: z.enum(["minute", "hour", "day", "week", "month"]).optional(),
-				limit: z.number().min(1).max(1000).optional(),
+				type: z.string().optional().describe("Query type for single-query mode"),
+				...QueryItemSchema.omit({ type: true }).shape,
+				timezone: z.string().optional().default("UTC"),
+				queries: z
+					.preprocess(
+						coerceQueriesArray,
+						z.array(QueryItemSchema).min(2).max(10).optional()
+					)
+					.describe(
+						"Batch: 2-10 queries (array or JSON string). Each needs type."
+					),
 			}),
-			handler: async (args: {
-				websiteId: string;
-				type: string;
-				from: string;
-				to: string;
-				timeUnit?: "minute" | "hour" | "day" | "week" | "month";
-				limit?: number;
-			}) => {
+			handler: async (args: GetDataArgs) => {
 				const access = await ensureWebsiteAccess(
 					args.websiteId,
 					ctx.requestHeaders,
 					ctx.apiKey
 				);
 				if (access instanceof Error) {
-					return toMcpResult({ error: access.message }, true);
+					return toMcpResult({ error: "Request failed" }, true);
 				}
-				if (!(args.type in QueryBuilders)) {
-					return toMcpResult(
-						{
-							error: `Unknown type: ${args.type}. Available: ${Object.keys(QueryBuilders).join(", ")}`,
-						},
-						true
-					);
+
+				const timezone = args.timezone ?? "UTC";
+				const items: McpQueryItem[] =
+					args.queries && args.queries.length >= 2
+						? args.queries
+						: args.type
+							? [
+								{
+									type: args.type,
+									preset: args.preset,
+									from: args.from,
+									to: args.to,
+									timeUnit: args.timeUnit,
+									limit: args.limit,
+									filters: args.filters,
+									groupBy: args.groupBy,
+									orderBy: args.orderBy,
+								},
+							]
+							: [];
+
+				if (items.length === 0) {
+					return toMcpResult({ error: "Invalid request" }, true);
 				}
+
+				const buildResult = buildBatchQueryRequests(
+					items,
+					args.websiteId,
+					timezone
+				);
+				if ("error" in buildResult) {
+					return toMcpResult({ error: "Invalid request" }, true);
+				}
+				const requests = buildResult.requests;
+
 				try {
 					const websiteDomain =
 						(await getWebsiteDomain(args.websiteId)) ?? "unknown";
-					const queryRequest: QueryRequest = {
-						projectId: args.websiteId,
-						type: args.type,
-						from: args.from,
-						to: args.to,
-						timeUnit: args.timeUnit,
-						limit: args.limit,
-						timezone: "UTC",
-					};
-					const data = await executeQuery(
-						queryRequest,
+					const results = await executeBatch(requests, {
 						websiteDomain,
-						queryRequest.timezone
-					);
-					return toMcpResult({ data, rowCount: data.length, type: args.type });
-				} catch (error) {
+						timezone,
+					});
+					const isBatch = results.length > 1;
 					return toMcpResult(
-						{
-							error:
-								error instanceof Error
-									? error.message
-									: "Query execution failed",
-						},
-						true
+						isBatch
+							? {
+								batch: true,
+								results: results.map((r) => ({
+									type: r.type,
+									data: r.data,
+									rowCount: r.data.length,
+									...(r.error && { error: "Query failed" }),
+								})),
+							}
+							: results[0]
+								? {
+									data: results[0].data,
+									rowCount: results[0].data.length,
+									type: results[0].type,
+									...(results[0].error && { error: "Query failed" }),
+								}
+								: { error: "Query failed" }
 					);
+				} catch {
+					return toMcpResult({ error: "Query failed" }, true);
 				}
 			},
 		},
+		get_schema: {
+			description:
+				"Returns ClickHouse schema docs for the analytics database. Use before writing custom SQL or choosing query types.",
+			inputSchema: z.object({}),
+			handler: () =>
+				toMcpResult({ schema: CLICKHOUSE_SCHEMA_DOCS }),
+		},
 		capabilities: {
 			description:
-				"Returns what this MCP supports: query types, limits, and usage hints.",
+				"Query types with descriptions, date presets, schema summary, and hints.",
 			inputSchema: z.object({}),
 			handler: () => {
-				const types = Object.keys(QueryBuilders);
+				const queryTypeDescriptions = getQueryTypeDescriptions();
 				return toMcpResult({
-					queryTypes: types,
+					queryTypes: queryTypeDescriptions,
+					schemaSummary: getSchemaSummary(),
+					datePresets: MCP_DATE_PRESETS,
 					dateFormat: "YYYY-MM-DD",
 					maxLimit: 1000,
 					hints: [
-						"Use ask for natural language questions",
-						"Use list_websites first to get website IDs",
-						"Use get_data for structured JSON when automating",
+						"list_websites first, then get_data",
+						"get_data defaults to last_7d when no dates",
+						"get_data queries array for batch (2-10)",
+						"get_schema for full ClickHouse docs",
 					],
 				});
 			},

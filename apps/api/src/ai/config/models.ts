@@ -1,14 +1,15 @@
 import { createTracker } from "@databuddy/ai/vercel";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createGateway } from "ai";
 
-const apiKey = process.env.AI_API_KEY;
+const apiKey =
+	process.env.AI_GATEWAY_API_KEY ?? process.env.AI_API_KEY ?? "";
 
-const headers = {
+const headers: Record<string, string> = {
 	"HTTP-Referer": "https://www.databuddy.cc/",
 	"X-Title": "Databuddy",
 };
 
-export const openrouter = createOpenRouter({
+export const gateway = createGateway({
 	apiKey,
 	headers,
 });
@@ -28,15 +29,17 @@ const modelNames = {
 } as const;
 
 const baseModels = {
-	triage: track(openrouter.chat(modelNames.triage)),
-	analytics: track(openrouter.chat(modelNames.analytics)),
-	advanced: track(openrouter.chat(modelNames.advanced)),
-	perplexity: track(openrouter.chat(modelNames.perplexity)),
+	triage: track(gateway.chat(modelNames.triage)),
+	analytics: track(gateway.chat(modelNames.analytics)),
+	analyticsMcp: track(gateway.chat(modelNames.analytics)),
+	advanced: track(gateway.chat(modelNames.advanced)),
+	perplexity: track(gateway.chat(modelNames.perplexity)),
 } as const;
 
 export const models = {
 	triage: baseModels.triage,
 	analytics: baseModels.analytics,
+	analyticsMcp: baseModels.analyticsMcp,
 	advanced: baseModels.advanced,
 	perplexity: baseModels.perplexity,
 } as const;

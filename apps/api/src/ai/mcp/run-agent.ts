@@ -14,7 +14,7 @@ export interface RunMcpAgentOptions {
 export async function runMcpAgent(
 	options: RunMcpAgentOptions
 ): Promise<string> {
-	const config = createMcpAgentConfig(models.analytics, {
+	const config = createMcpAgentConfig(models.analyticsMcp, {
 		requestHeaders: options.requestHeaders,
 		apiKey: options.apiKey,
 		userId: options.userId,

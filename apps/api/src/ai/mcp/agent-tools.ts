@@ -8,7 +8,7 @@ import {
 	hasWebsiteScope,
 } from "../../lib/api-key";
 import { getWebsiteDomain, validateWebsite } from "../../lib/website-utils";
-import { executeQuery, QueryBuilders } from "../../query";
+import { executeBatch, executeQuery, QueryBuilders } from "../../query";
 import type { QueryRequest } from "../../query/types";
 import { createAnnotationTools } from "../tools/annotations";
 import { createFunnelTools } from "../tools/funnels";
@@ -19,6 +19,7 @@ import {
 	SQL_VALIDATION_ERROR,
 	validateSQL,
 } from "../tools/utils";
+import { buildBatchQueryRequests, MCP_DATE_PRESETS } from "./mcp-utils";
 
 export interface McpAgentContext {
 	requestHeaders: Headers;
@@ -234,6 +235,64 @@ export function createMcpAgentTools() {
 					{ websiteId }
 				);
 				return result;
+			},
+		}),
+		get_data: tool({
+			description: `Batch 2-10 analytics queries in one call. PREFERRED when user asks for multiple metrics (traffic + top pages + referrers, etc). Types: ${Object.keys(QueryBuilders).join(", ")}. Use preset (e.g. last_7d, last_30d) or from/to dates.`,
+			strict: true,
+			inputSchema: z.object({
+				websiteId: z.string(),
+				queries: z
+					.array(
+						z.object({
+							type: z.string(),
+							preset: z
+								.enum(MCP_DATE_PRESETS as [string, ...string[]])
+								.optional(),
+							from: z.string().optional(),
+							to: z.string().optional(),
+							timeUnit: z
+								.enum(["minute", "hour", "day", "week", "month"])
+								.optional(),
+							limit: z.number().min(1).max(1000).optional(),
+						})
+					)
+					.min(2)
+					.max(10),
+				timezone: z.string().optional().default("UTC"),
+			}),
+			execute: async (args, options) => {
+				const experimental_context = (
+					options as { experimental_context?: unknown }
+				).experimental_context;
+				const ctx = getContext(experimental_context);
+				const access = await ensureWebsiteAccess(args.websiteId, ctx);
+				if (access instanceof Error) {
+					throw new Error(access.message);
+				}
+				const buildResult = buildBatchQueryRequests(
+					args.queries,
+					args.websiteId,
+					args.timezone ?? "UTC"
+				);
+				if ("error" in buildResult) {
+					throw new Error(buildResult.error);
+				}
+				const websiteDomain =
+					(await getWebsiteDomain(args.websiteId)) ?? "unknown";
+				const results = await executeBatch(buildResult.requests, {
+					websiteDomain,
+					timezone: args.timezone ?? "UTC",
+				});
+				return {
+					batch: true,
+					results: results.map((r) => ({
+						type: r.type,
+						data: r.data,
+						rowCount: r.data.length,
+						...(r.error && { error: "Query failed" }),
+					})),
+				};
 			},
 		}),
 		...createFunnelTools(),

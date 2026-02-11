@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noNamespaceImport: ignore */
 import * as analytics from "./analytics";
 import * as reflection from "./reflection";
 import * as triage from "./triage";

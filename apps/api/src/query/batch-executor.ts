@@ -160,19 +160,18 @@ export function executeBatch(
 
 		const groups = groupBySchema(requests);
 		const results: BatchResult[] = Array.from({ length: requests.length });
-		let unionCount = 0;
-		let singleCount = 0;
 
-		for (const groupItems of groups.values()) {
+		async function runGroup(
+			groupItems: { index: number; req: BatchRequest }[]
+		): Promise<{ unionCount: number; singleCount: number }> {
 			if (groupItems.length === 0) {
-				continue;
+				return { unionCount: 0, singleCount: 0 };
 			}
 
 			if (groupItems.length === 1 && groupItems[0]) {
 				const { index, req } = groupItems[0];
 				results[index] = await runSingle(req, opts);
-				singleCount += 1;
-				continue;
+				return { unionCount: 0, singleCount: 1 };
 			}
 
 			try {
@@ -200,14 +199,20 @@ export function executeBatch(
 						data: config ? applyPlugins(raw, config, opts?.websiteDomain) : raw,
 					};
 				}
-				unionCount += 1;
+				return { unionCount: 1, singleCount: 0 };
 			} catch {
 				for (const { index, req } of groupItems) {
 					results[index] = await runSingle(req, opts);
-					singleCount += 1;
 				}
+				return { unionCount: 0, singleCount: groupItems.length };
 			}
 		}
+
+		const groupResults = await Promise.all(
+			Array.from(groups.values()).map(runGroup)
+		);
+		const unionCount = groupResults.reduce((s, r) => s + r.unionCount, 0);
+		const singleCount = groupResults.reduce((s, r) => s + r.singleCount, 0);
 
 		setAttributes({
 			batch_union_groups: unionCount,

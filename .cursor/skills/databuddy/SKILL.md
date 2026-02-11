@@ -1,6 +1,6 @@
 ---
 name: databuddy
-description: Integrate Databuddy analytics into applications using the SDK or REST API. Use when implementing analytics tracking, feature flags, custom events, Web Vitals, error tracking, LLM observability, or querying analytics data programmatically.
+description: Integrate Databuddy analytics using the SDK, REST API, or MCP. Use when implementing analytics tracking, feature flags, custom events, Web Vitals, error tracking, LLM observability, MCP agents, or querying analytics data programmatically.
 metadata:
   author: databuddy
   version: "2.3"
@@ -22,7 +22,8 @@ Use this skill when:
 - Adding feature flags to an application
 - Tracking custom events, errors, or Web Vitals
 - Integrating LLM observability with Vercel AI SDK
-- Querying analytics data via the REST API
+- Querying analytics data via the REST API or MCP
+- Building MCP agents or AI-powered analytics workflows
 - Building custom dashboards or reports
 
 ## SDK Entry Points
@@ -226,6 +227,25 @@ curl -X POST -H "x-api-key: dbdy_your_api_key" \
 | `custom_events` | Custom event data |
 
 **Date Presets:** `today`, `yesterday`, `last_7d`, `last_30d`, `last_90d`, `this_month`, `last_month`
+
+### MCP (Model Context Protocol)
+
+Databuddy exposes an MCP server for AI agents (Cursor, Claude Desktop, etc.) to query analytics. Use for natural-language questions, automated reports, or structured data extraction.
+
+**Endpoint:** `POST https://api.databuddy.cc/v1/mcp` (local: `http://localhost:3001/v1/mcp`)
+
+**Auth:** API key with `read:data` scope via `x-api-key` or `Authorization: Bearer <key>`
+
+**Tools:**
+- `ask` – Natural-language analytics questions (e.g. "top 5 pages last week")
+- `list_websites` – List accessible website IDs
+- `get_data` – Pre-built query with `websiteId`, `type`, and `preset` or `from`/`to`
+- `get_schema` – ClickHouse schema docs (tables, columns)
+- `capabilities` – Query types with descriptions, date presets, hints
+
+**Date presets for get_data:** `last_7d`, `last_30d`, `last_90d`, `today`, `yesterday`, `this_week`, `this_month`, etc.
+
+**Cursor setup** (mcp.json): Add a Databuddy MCP entry with the API URL and your API key.
 
 ### Send Events via API
 
