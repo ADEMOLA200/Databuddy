@@ -2,8 +2,8 @@ import { Databuddy } from "@databuddy/sdk/node";
 
 /**
  * Agent observability: track MCP tool usage and dashboard agent chats.
- * Set DATABUDDY_AGENT_API_KEY + DATABUDDY_AGENT_WEBSITE_ID (or DATABUDDY_API_KEY + DATABUDDY_WEBSITE_ID)
- * to a website with track:events scope. Events: agent_tool_completed (source: mcp), agent_chat_started, agent_chat_error.
+ * Set DATABUDDY_API_KEY + DATABUDDY_WEBSITE_ID to a website with track:events scope.
+ * Single event: agent_activity with action (tool_completed | chat_started | chat_error), source (mcp | dashboard), attribution props.
  */
 const apiKey = process.env.DATABUDDY_API_KEY;
 const websiteId = process.env.DATABUDDY_WEBSITE_ID;

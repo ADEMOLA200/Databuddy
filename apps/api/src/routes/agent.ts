@@ -125,6 +125,7 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 		function agentChat({ body, user, request }) {
 			return record("agentChat", async () => {
 				const chatId = body.id ?? generateId();
+				let organizationId: string | null = null;
 
 				setAttributes({
 					agent_website_id: body.websiteId,
@@ -143,6 +144,7 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 					}
 
 					const { website } = websiteValidation;
+					organizationId = website.organizationId ?? null;
 
 					const hasPermission =
 						website.isPublic ||
@@ -172,12 +174,14 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 					const timezone = body.timezone ?? "UTC";
 					const domain = website.domain ?? "unknown";
 
-					trackAgentEvent("agent_chat_started", {
+					trackAgentEvent("agent_activity", {
+						action: "chat_started",
 						source: "dashboard",
 						model,
 						agent_type: agentType,
 						website_id: body.websiteId,
-						message_count: body.messages.length,
+						organization_id: organizationId,
+						user_id: userId,
 					});
 
 					console.log("[Agent] Creating agent", {
@@ -236,10 +240,14 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 						originalMessages: validation.data,
 					});
 				} catch (error) {
-					trackAgentEvent("agent_chat_error", {
+					trackAgentEvent("agent_activity", {
+						action: "chat_error",
 						source: "dashboard",
 						model: body.model ?? "agent",
 						error_type: getErrorName(error),
+						organization_id: organizationId,
+						user_id: user?.id ?? null,
+						website_id: body.websiteId,
 					});
 					captureError(error, {
 						agent_error: true,
