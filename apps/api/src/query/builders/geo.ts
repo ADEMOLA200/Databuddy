@@ -108,7 +108,7 @@ export const GeoBuilders: Record<string, SimpleQueryConfig> = {
 		limit: 100,
 		timeField: "time",
 		customizable: true,
-		plugins: { normalizeGeo: true, deduplicateGeo: true },
+		plugins: { normalizeGeo: true },
 	},
 
 	timezone: {
@@ -195,6 +195,6 @@ export const GeoBuilders: Record<string, SimpleQueryConfig> = {
 		limit: 100,
 		timeField: "time",
 		customizable: true,
-		plugins: { normalizeGeo: true, deduplicateGeo: true },
+		plugins: { normalizeGeo: true },
 	},
 };
