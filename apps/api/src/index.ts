@@ -4,6 +4,7 @@ import {
 	appRouter,
 	createAbortSignalInterceptor,
 	createRPCContext,
+	getBillingCustomerId,
 	recordORPCError,
 	setupUncaughtErrorHandlers,
 } from "@databuddy/rpc";
@@ -284,8 +285,16 @@ const app = new Elysia()
 						return null;
 					}
 
+					const activeOrgId = (
+						session.session as { activeOrganizationId?: string | null }
+					)?.activeOrganizationId;
+					const customerId = await getBillingCustomerId(
+						session.user.id,
+						activeOrgId
+					);
+
 					return {
-						customerId: session.user.id,
+						customerId,
 						customerData: {
 							name: session.user.name,
 							email: session.user.email,

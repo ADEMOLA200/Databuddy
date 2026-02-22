@@ -36,22 +36,36 @@ async function getBillingOwnerId(
 
 	// If user has an active organization, get the org owner's billing
 	if (activeOrganizationId) {
-		const [orgOwner] = await db
-			.select({ ownerId: member.userId })
-			.from(member)
-			.where(
-				and(
-					eq(member.organizationId, activeOrganizationId),
-					eq(member.role, "owner")
+		const [orgOwner, currentUserMember] = await Promise.all([
+			db
+				.select({ ownerId: member.userId })
+				.from(member)
+				.where(
+					and(
+						eq(member.organizationId, activeOrganizationId),
+						eq(member.role, "owner")
+					)
 				)
-			)
-			.limit(1);
+				.limit(1),
+			db
+				.select({ role: member.role })
+				.from(member)
+				.where(
+					and(
+						eq(member.organizationId, activeOrganizationId),
+						eq(member.userId, userId)
+					)
+				)
+				.limit(1),
+		]);
 
-		if (orgOwner) {
-			customerId = orgOwner.ownerId;
+		if (orgOwner.at(0)) {
+			const owner = orgOwner[0];
+			customerId = owner.ownerId;
 			isOrganization = true;
-			// User can only upgrade if they are the org owner
-			canUserUpgrade = orgOwner.ownerId === userId;
+			const role = currentUserMember.at(0)?.role;
+			canUserUpgrade =
+				owner.ownerId === userId || role === "admin" || role === "owner";
 		}
 	}
 

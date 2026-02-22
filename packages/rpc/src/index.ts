@@ -52,3 +52,4 @@ export {
 	requireUsageWithinLimit,
 } from "./types/billing";
 export { authorizeWebsiteAccess } from "./utils/auth";
+export { getBillingCustomerId } from "./utils/billing";

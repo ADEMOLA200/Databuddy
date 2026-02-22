@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import AttachDialog from "@/components/autumn/attach-dialog";
 import { EmptyState } from "@/components/empty-state";
+import { useBillingContext } from "@/components/providers/billing-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CancelSubscriptionDialog } from "./components/cancel-subscription-dialog";
@@ -57,6 +58,7 @@ function getAddOnStatus(addOn: Product, customerProduct?: CustomerProduct) {
 }
 
 export default function BillingPage() {
+	const { canUserUpgrade } = useBillingContext();
 	const { products, usage, customer, isLoading, error, refetch } =
 		useBillingData();
 	const { attach } = useCustomer();
@@ -220,39 +222,54 @@ export default function BillingPage() {
 						</div>
 
 						<div className="flex w-full flex-col gap-2 lg:w-auto lg:p-5">
-							{isCanceled ? (
-								<Button asChild className="w-full" variant="secondary">
-									<Link href="/billing/plans">Reactivate Plan</Link>
-								</Button>
-							) : isFree ? (
-								<Button asChild className="w-full" variant="secondary">
-									<Link href="/billing/plans">Upgrade Plan</Link>
-								</Button>
-							) : (
+							{canUserUpgrade ? (
 								<>
-									<Button
-										className="w-full"
-										onClick={() =>
-											currentPlan &&
-											onCancelClick(
-												currentPlan.id,
-												currentPlan.display?.name || currentPlan.name,
-												currentProduct?.current_period_end ?? undefined
-											)
-										}
-										variant="outline"
-									>
-										Cancel Plan
-									</Button>
-									<Button asChild className="w-full" variant="secondary">
-										<Link href="/billing/plans">Change Plan</Link>
+									{isCanceled ? (
+										<Button asChild className="w-full" variant="secondary">
+											<Link href="/billing/plans">Reactivate Plan</Link>
+										</Button>
+									) : isFree ? (
+										<Button asChild className="w-full" variant="secondary">
+											<Link href="/billing/plans">Upgrade Plan</Link>
+										</Button>
+									) : (
+										<>
+											<Button
+												className="w-full"
+												onClick={() =>
+													currentPlan &&
+													onCancelClick(
+														currentPlan.id,
+														currentPlan.display?.name || currentPlan.name,
+														currentProduct?.current_period_end ?? undefined
+													)
+												}
+												variant="outline"
+											>
+												Cancel Plan
+											</Button>
+											<Button asChild className="w-full" variant="secondary">
+												<Link href="/billing/plans">Change Plan</Link>
+											</Button>
+										</>
+									)}
+									<Button className="w-full" onClick={onManageBilling}>
+										Billing Portal
+										<ArrowSquareOutIcon size={14} />
 									</Button>
 								</>
+							) : (
+								<p className="text-pretty text-muted-foreground text-sm">
+									Billing is managed by your{" "}
+									<Link
+										className="font-medium text-foreground underline underline-offset-2"
+										href="/organizations/members"
+									>
+										org admin
+									</Link>
+									.
+								</p>
 							)}
-							<Button className="w-full" onClick={onManageBilling}>
-								Billing Portal
-								<ArrowSquareOutIcon size={14} />
-							</Button>
 						</div>
 					</div>
 
@@ -299,21 +316,24 @@ export default function BillingPage() {
 											) : isActive ? (
 												<div className="flex items-center gap-2">
 													<Badge variant="green">Active</Badge>
-													<Button
-														onClick={() =>
-															onCancelClick(
-																addOn.id,
-																addOn.display?.name || addOn.name,
-																customerProduct?.current_period_end ?? undefined
-															)
-														}
-														size="sm"
-														variant="ghost"
-													>
-														<XIcon size={14} />
-													</Button>
+													{canUserUpgrade && (
+														<Button
+															onClick={() =>
+																onCancelClick(
+																	addOn.id,
+																	addOn.display?.name || addOn.name,
+																	customerProduct?.current_period_end ??
+																		undefined
+																)
+															}
+															size="sm"
+															variant="ghost"
+														>
+															<XIcon size={14} />
+														</Button>
+													)}
 												</div>
-											) : (
+											) : canUserUpgrade ? (
 												<Button
 													onClick={() =>
 														attach({
@@ -327,7 +347,7 @@ export default function BillingPage() {
 													<PlusIcon size={14} />
 													Add
 												</Button>
-											)}
+											) : null}
 										</div>
 									);
 								})}
