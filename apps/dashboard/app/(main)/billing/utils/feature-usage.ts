@@ -14,6 +14,7 @@ export interface FeatureUsage {
 	name: string;
 	balance: number;
 	limit: number;
+	includedLimit: number;
 	unlimited: boolean;
 	hasExtraCredits: boolean;
 	hasPricedOverage: boolean;
@@ -75,20 +76,23 @@ export function calculateFeatureUsage(
 	const overage =
 		overageAmount > 0
 			? {
-					amount: overageAmount,
-					cost: calculateOverageCost(overageAmount, pricingTiers),
-				}
+				amount: overageAmount,
+				cost: calculateOverageCost(overageAmount, pricingTiers),
+			}
 			: null;
+
+	const effectiveLimit = unlimited
+		? Number.POSITIVE_INFINITY
+		: hasExtraCredits
+			? balance
+			: limit;
 
 	return {
 		id: feature.id,
 		name: feature.name,
 		balance,
-		limit: unlimited
-			? Number.POSITIVE_INFINITY
-			: hasExtraCredits
-				? balance
-				: limit,
+		limit: effectiveLimit,
+		includedLimit: unlimited ? Number.POSITIVE_INFINITY : limit,
 		unlimited,
 		hasExtraCredits,
 		hasPricedOverage: Boolean(pricingTiers?.length),

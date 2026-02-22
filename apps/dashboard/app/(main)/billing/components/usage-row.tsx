@@ -56,7 +56,8 @@ export const UsageRow = memo(function UsageRowComponent({
 	feature: FeatureUsage;
 	isMaxPlan?: boolean;
 }) {
-	const used = feature.limit - feature.balance;
+	const used = feature.includedLimit - feature.balance;
+	const usedClamped = Math.max(0, used);
 	const hasNormalLimit = !(feature.unlimited || feature.hasExtraCredits);
 	const hasOverage = feature.overage !== null;
 	const isBilledOverage = hasOverage && feature.hasPricedOverage;
@@ -80,7 +81,7 @@ export const UsageRow = memo(function UsageRowComponent({
 
 	const usedPercent = feature.unlimited
 		? 0
-		: Math.min(Math.max((used / feature.limit) * 100, 0), 100);
+		: Math.min(Math.max((usedClamped / feature.includedLimit) * 100, 0), 100);
 	const isLow = hasNormalLimit && usedPercent > 80;
 
 	return (
@@ -126,11 +127,15 @@ export const UsageRow = memo(function UsageRowComponent({
 						Unlimited
 					</Badge>
 				) : feature.hasExtraCredits ? (
-					<div className="text-right">
+					<div className="text-balance text-right">
 						<span className="font-mono text-base tabular-nums">
-							{formatCompactNumber(used)}
+							{formatCompactNumber(0)} / {formatCompactNumber(feature.includedLimit)}{" "}
+							used
 						</span>
-						<div className="text-muted-foreground text-xs">used</div>
+						<div className="text-muted-foreground text-xs">
+							{formatCompactNumber(feature.balance - feature.includedLimit)} bonus
+							remaining
+						</div>
 					</div>
 				) : feature.overage ? (
 					<div className="text-right">
@@ -142,21 +147,26 @@ export const UsageRow = memo(function UsageRowComponent({
 						</div>
 					</div>
 				) : (
-					<div className="text-right">
+					<div className="text-balance text-right">
 						<span
 							className={cn(
 								"font-mono text-base tabular-nums",
 								isLow ? "text-warning" : "text-foreground"
 							)}
 						>
-							{formatCompactNumber(used)} / {formatCompactNumber(feature.limit)}
+							{formatCompactNumber(usedClamped)} /{" "}
+							{formatCompactNumber(feature.includedLimit)}
 						</span>
-						<div className="text-muted-foreground text-xs">used</div>
+						<div className="text-muted-foreground text-xs">
+							{usedClamped === 0
+								? `${formatCompactNumber(feature.includedLimit)} available`
+								: "used"}
+						</div>
 					</div>
 				)}
 			</div>
 
-			{hasNormalLimit && (
+			{!feature.unlimited && (
 				<div className="flex items-center gap-3">
 					<div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
 						<div
