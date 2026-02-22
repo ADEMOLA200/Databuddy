@@ -104,7 +104,7 @@ function OrganizationSelectorTrigger({
 		>
 			<div className="flex w-full min-w-0 items-center gap-2">
 				<div className="shrink-0 rounded">
-					<Avatar className="size-7">
+					<Avatar className="size-7 ring-1 ring-black/10 ring-inset">
 						<AvatarImage
 							alt={activeOrganization?.name ?? "Workspace"}
 							className="rounded"
@@ -205,7 +205,7 @@ export function OrganizationSelector() {
 			<div className="flex h-12 w-full items-center border-b bg-sidebar-accent px-3 py-3">
 				<div className="flex w-full min-w-0 items-center justify-between">
 					<div className="flex min-w-0 items-center gap-3">
-						<div className="shrink-0 rounded-lg border bg-sidebar/80 p-1.5">
+						<div className="shrink-0 rounded-lg bg-sidebar/80 p-1.5 ring-1 ring-black/10 ring-inset">
 							<Skeleton className="size-5 rounded" />
 						</div>
 						<div className="flex min-w-0 flex-1 flex-col items-start">
@@ -264,7 +264,7 @@ export function OrganizationSelector() {
 									key={org.id}
 									onClick={() => handleSelectOrganization(org.id)}
 								>
-									<Avatar className="size-5">
+									<Avatar className="size-5 ring-1 ring-black/10 ring-inset">
 										<AvatarImage
 											alt={org.name}
 											src={getDicebearUrl(org.logo || org.id)}

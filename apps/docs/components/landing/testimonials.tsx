@@ -137,7 +137,7 @@ function TestimonialCardContent({
 			</p>
 			<div className="relative z-10 flex h-[60px] w-full items-center gap-1 border-border/50 border-t bg-background/40 backdrop-blur-md sm:h-[65px] md:h-[70px] lg:h-[75px]">
 				<div className="flex w-full items-center gap-3 px-4 py-2 sm:gap-3 sm:px-5 sm:py-3 md:gap-4 md:px-6 md:py-4 lg:px-7">
-					<Avatar className="h-9 w-9 border border-border/50 shadow-sm sm:h-10 sm:w-10 md:h-11 md:w-11 lg:h-12 lg:w-12">
+					<Avatar className="h-9 w-9 shadow-sm ring-1 ring-black/10 ring-inset sm:h-10 sm:w-10 md:h-11 md:w-11 lg:h-12 lg:w-12">
 						<AvatarImage
 							src={testimonial.avatar.length > 2 ? testimonial.avatar : ""}
 						/>

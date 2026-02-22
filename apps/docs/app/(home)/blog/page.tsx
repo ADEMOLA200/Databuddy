@@ -132,7 +132,7 @@ function BlogPostCard({ post }: { post: Post }) {
 							<div className="flex -space-x-2">
 								{post.authors.slice(0, 2).map((author) => (
 									<Avatar
-										className="size-6 rounded border-2 border-background"
+										className="size-6 rounded ring-1 ring-black/10 ring-inset"
 										key={author.id}
 									>
 										<AvatarImage

@@ -34,7 +34,7 @@ function ContributorCard({ contributor }: { contributor: Contributor }) {
 					</div>
 
 					{/* Avatar */}
-					<Avatar className="mb-4 h-16 w-16 border-2 border-border">
+					<Avatar className="mb-4 h-16 w-16 ring-1 ring-black/10 ring-inset">
 						<AvatarImage alt={contributor.login} src={contributor.avatar_url} />
 						<AvatarFallback className="bg-muted font-medium text-lg text-muted-foreground">
 							{contributor.login.charAt(0).toUpperCase()}
