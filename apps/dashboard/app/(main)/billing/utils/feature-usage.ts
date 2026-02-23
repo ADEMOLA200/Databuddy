@@ -76,9 +76,9 @@ export function calculateFeatureUsage(
 	const overage =
 		overageAmount > 0
 			? {
-				amount: overageAmount,
-				cost: calculateOverageCost(overageAmount, pricingTiers),
-			}
+					amount: overageAmount,
+					cost: calculateOverageCost(overageAmount, pricingTiers),
+				}
 			: null;
 
 	const effectiveLimit = unlimited

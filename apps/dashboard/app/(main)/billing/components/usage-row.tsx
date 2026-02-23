@@ -129,12 +129,12 @@ export const UsageRow = memo(function UsageRowComponent({
 				) : feature.hasExtraCredits ? (
 					<div className="text-balance text-right">
 						<span className="font-mono text-base tabular-nums">
-							{formatCompactNumber(0)} / {formatCompactNumber(feature.includedLimit)}{" "}
-							used
+							{formatCompactNumber(0)} /{" "}
+							{formatCompactNumber(feature.includedLimit)} used
 						</span>
 						<div className="text-muted-foreground text-xs">
-							{formatCompactNumber(feature.balance - feature.includedLimit)} bonus
-							remaining
+							{formatCompactNumber(feature.balance - feature.includedLimit)}{" "}
+							bonus remaining
 						</div>
 					</div>
 				) : feature.overage ? (
