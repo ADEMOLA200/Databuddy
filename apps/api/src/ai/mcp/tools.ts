@@ -1,5 +1,6 @@
 import { auth, websitesApi } from "@databuddy/auth";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import dayjs from "dayjs";
 import { z } from "zod";
 import { getAccessibleWebsites } from "../../lib/accessible-websites";
 import {
@@ -9,8 +10,14 @@ import {
 	hasWebsiteScope,
 } from "../../lib/api-key";
 import { trackAgentEvent } from "../../lib/databuddy";
-import { getWebsiteDomain, validateWebsite } from "../../lib/website-utils";
+import {
+	getCachedWebsite,
+	getWebsiteDomain,
+	validateWebsite,
+} from "../../lib/website-utils";
 import { executeBatch } from "../../query";
+import type { AppContext } from "../config/context";
+import { callRPCProcedure } from "../tools/utils";
 import {
 	appendToConversation,
 	getConversationHistory,
@@ -212,6 +219,29 @@ function toMcpResult(data: unknown, isError = false): CallToolResult {
 	};
 }
 
+function buildRpcContext(ctx: McpToolContext): AppContext {
+	return {
+		userId: ctx.userId ?? "",
+		websiteId: "",
+		websiteDomain: "",
+		timezone: "UTC",
+		currentDateTime: new Date().toISOString(),
+		chatId: "",
+		requestHeaders: ctx.requestHeaders,
+	};
+}
+
+async function getOrganizationId(websiteId: string): Promise<string | Error> {
+	const website = await getCachedWebsite(websiteId);
+	if (!website) {
+		return new Error("Website not found");
+	}
+	if (!website.organizationId) {
+		return new Error("Website is not associated with an organization");
+	}
+	return website.organizationId;
+}
+
 function getMcpAttribution(ctx: McpToolContext): {
 	organization_id: string | null;
 	user_id: string | null;
@@ -252,8 +282,18 @@ export function createMcpTools(ctx: McpToolContext) {
 					.describe(
 						"Optional. Pass from previous ask response for follow-up questions to maintain conversation history."
 					),
+				timezone: z
+					.string()
+					.optional()
+					.describe(
+						"Optional. IANA timezone (e.g. 'America/New_York'). Defaults to UTC."
+					),
 			}),
-			handler: async (args: { question: string; conversationId?: string }) => {
+			handler: async (args: {
+				question: string;
+				conversationId?: string;
+				timezone?: string;
+			}) => {
 				try {
 					const conversationId = args.conversationId ?? crypto.randomUUID();
 					const priorMessages = await getConversationHistory(
@@ -267,6 +307,7 @@ export function createMcpTools(ctx: McpToolContext) {
 						requestHeaders: ctx.requestHeaders,
 						apiKey: ctx.apiKey,
 						userId: ctx.userId,
+						timezone: args.timezone,
 						priorMessages: priorMessages.length > 0 ? priorMessages : undefined,
 					});
 
@@ -275,7 +316,8 @@ export function createMcpTools(ctx: McpToolContext) {
 						ctx.userId,
 						ctx.apiKey,
 						args.question,
-						answer
+						answer,
+						priorMessages
 					);
 
 					trackToolCompletion(ctx, "ask", true);
@@ -496,6 +538,12 @@ export function createMcpTools(ctx: McpToolContext) {
 						"get_data",
 						"get_schema",
 						"capabilities",
+						"list_funnels",
+						"get_funnel_analytics",
+						"list_goals",
+						"get_goal_analytics",
+						"list_links",
+						"search_links",
 					],
 					hints: [
 						"get_data accepts websiteId, websiteName, or websiteDomain — no need to call list_websites first if you know the name or domain",
@@ -505,12 +553,274 @@ export function createMcpTools(ctx: McpToolContext) {
 						"get_data defaults to last_7d when preset/from/to omitted",
 						"get_schema returns full ClickHouse schema — only needed for custom SQL, not for query builders",
 						"capabilities with detail='full' shows allowedFilters per query type",
-						"ask returns conversationId — pass it for follow-up questions",
+						"ask accepts optional timezone (IANA format) and returns conversationId for follow-ups",
+						"list_funnels, list_goals, list_links are direct tools — no LLM cost, fast",
+						"Use ask for complex questions; use direct tools for simple CRUD lookups",
 						"Custom events: use custom_events_discovery to get events + properties + top values in one call",
 						"Custom events: use filters [{field:'event_name',op:'eq',value:'your-event'}] to scope property queries to a specific event",
 						"Custom events: use filters [{field:'property_key',op:'eq',value:'your-key'}] to scope property_top_values/distribution to a specific property",
 					],
 				});
+			},
+		},
+
+		list_funnels: {
+			description:
+				"List all funnels for a website. Returns funnels with steps, filters, and metadata. No LLM cost.",
+			inputSchema: z.object({
+				websiteId: z.string().describe("Website ID from list_websites"),
+			}),
+			handler: async (args: { websiteId: string }) => {
+				try {
+					const rpcCtx = buildRpcContext(ctx);
+					const result = await callRPCProcedure(
+						"funnels",
+						"list",
+						{ websiteId: args.websiteId },
+						rpcCtx
+					);
+					trackToolCompletion(ctx, "list_funnels", true);
+					return toMcpResult({
+						funnels: result,
+						count: Array.isArray(result) ? result.length : 0,
+					});
+				} catch {
+					trackToolCompletion(ctx, "list_funnels", false);
+					return toMcpResult({ error: "Failed to list funnels" }, true);
+				}
+			},
+		},
+		get_funnel_analytics: {
+			description:
+				"Get conversion rates, drop-off points, and step-by-step metrics for a funnel. No LLM cost.",
+			inputSchema: z.object({
+				funnelId: z.string().describe("Funnel ID from list_funnels"),
+				websiteId: z.string().describe("Website ID from list_websites"),
+				startDate: z
+					.string()
+					.optional()
+					.describe("Start date YYYY-MM-DD (defaults to 30 days ago)"),
+				endDate: z
+					.string()
+					.optional()
+					.describe("End date YYYY-MM-DD (defaults to today)"),
+			}),
+			handler: async (args: {
+				funnelId: string;
+				websiteId: string;
+				startDate?: string;
+				endDate?: string;
+			}) => {
+				try {
+					if (args.startDate && !dayjs(args.startDate).isValid()) {
+						return toMcpResult({ error: "startDate must be YYYY-MM-DD" }, true);
+					}
+					if (args.endDate && !dayjs(args.endDate).isValid()) {
+						return toMcpResult({ error: "endDate must be YYYY-MM-DD" }, true);
+					}
+					const rpcCtx = buildRpcContext(ctx);
+					const result = await callRPCProcedure(
+						"funnels",
+						"getAnalytics",
+						{
+							funnelId: args.funnelId,
+							websiteId: args.websiteId,
+							startDate: args.startDate,
+							endDate: args.endDate,
+						},
+						rpcCtx
+					);
+					trackToolCompletion(ctx, "get_funnel_analytics", true);
+					return toMcpResult(result);
+				} catch {
+					trackToolCompletion(ctx, "get_funnel_analytics", false);
+					return toMcpResult({ error: "Failed to get funnel analytics" }, true);
+				}
+			},
+		},
+
+		list_goals: {
+			description:
+				"List all goals for a website. Returns goals with type, target, filters, and metadata. No LLM cost.",
+			inputSchema: z.object({
+				websiteId: z.string().describe("Website ID from list_websites"),
+			}),
+			handler: async (args: { websiteId: string }) => {
+				try {
+					const rpcCtx = buildRpcContext(ctx);
+					const result = await callRPCProcedure(
+						"goals",
+						"list",
+						{ websiteId: args.websiteId },
+						rpcCtx
+					);
+					trackToolCompletion(ctx, "list_goals", true);
+					return toMcpResult({
+						goals: result,
+						count: Array.isArray(result) ? result.length : 0,
+					});
+				} catch {
+					trackToolCompletion(ctx, "list_goals", false);
+					return toMcpResult({ error: "Failed to list goals" }, true);
+				}
+			},
+		},
+		get_goal_analytics: {
+			description:
+				"Get conversion metrics for a goal: total users entered, completed, and conversion rate. No LLM cost.",
+			inputSchema: z.object({
+				goalId: z.string().describe("Goal ID from list_goals"),
+				websiteId: z.string().describe("Website ID from list_websites"),
+				startDate: z
+					.string()
+					.optional()
+					.describe("Start date YYYY-MM-DD (defaults to 30 days ago)"),
+				endDate: z
+					.string()
+					.optional()
+					.describe("End date YYYY-MM-DD (defaults to today)"),
+			}),
+			handler: async (args: {
+				goalId: string;
+				websiteId: string;
+				startDate?: string;
+				endDate?: string;
+			}) => {
+				try {
+					if (args.startDate && !dayjs(args.startDate).isValid()) {
+						return toMcpResult({ error: "startDate must be YYYY-MM-DD" }, true);
+					}
+					if (args.endDate && !dayjs(args.endDate).isValid()) {
+						return toMcpResult({ error: "endDate must be YYYY-MM-DD" }, true);
+					}
+					const rpcCtx = buildRpcContext(ctx);
+					const result = await callRPCProcedure(
+						"goals",
+						"getAnalytics",
+						{
+							goalId: args.goalId,
+							websiteId: args.websiteId,
+							startDate: args.startDate,
+							endDate: args.endDate,
+						},
+						rpcCtx
+					);
+					trackToolCompletion(ctx, "get_goal_analytics", true);
+					return toMcpResult(result);
+				} catch {
+					trackToolCompletion(ctx, "get_goal_analytics", false);
+					return toMcpResult({ error: "Failed to get goal analytics" }, true);
+				}
+			},
+		},
+
+		list_links: {
+			description:
+				"List all short links for a website's organization. Returns links with slugs, target URLs, and metadata. No LLM cost.",
+			inputSchema: z.object({
+				websiteId: z.string().describe("Website ID from list_websites"),
+			}),
+			handler: async (args: { websiteId: string }) => {
+				try {
+					const orgId = await getOrganizationId(args.websiteId);
+					if (orgId instanceof Error) {
+						trackToolCompletion(ctx, "list_links", false);
+						return toMcpResult({ error: "Failed to list links" }, true);
+					}
+					const rpcCtx = buildRpcContext(ctx);
+					const result = await callRPCProcedure(
+						"links",
+						"list",
+						{ organizationId: orgId },
+						rpcCtx
+					);
+					const links = Array.isArray(result) ? result : [];
+					trackToolCompletion(ctx, "list_links", true);
+					return toMcpResult({
+						links: links.map(
+							(link: {
+								id: string;
+								name: string;
+								slug: string;
+								targetUrl: string;
+								externalId: string | null;
+								expiresAt: string | null;
+								createdAt: string;
+								ogTitle: string | null;
+								ogDescription: string | null;
+							}) => ({
+								id: link.id,
+								name: link.name,
+								slug: link.slug,
+								targetUrl: link.targetUrl,
+								externalId: link.externalId,
+								expiresAt: link.expiresAt,
+								createdAt: link.createdAt,
+								ogTitle: link.ogTitle,
+								ogDescription: link.ogDescription,
+							})
+						),
+						count: links.length,
+					});
+				} catch {
+					trackToolCompletion(ctx, "list_links", false);
+					return toMcpResult({ error: "Failed to list links" }, true);
+				}
+			},
+		},
+		search_links: {
+			description:
+				"Search short links by name, slug, target URL, or external ID. No LLM cost.",
+			inputSchema: z.object({
+				websiteId: z.string().describe("Website ID from list_websites"),
+				query: z
+					.string()
+					.min(1)
+					.describe("Search query (matches name, slug, URL, or external ID)"),
+			}),
+			handler: async (args: { websiteId: string; query: string }) => {
+				try {
+					const orgId = await getOrganizationId(args.websiteId);
+					if (orgId instanceof Error) {
+						trackToolCompletion(ctx, "search_links", false);
+						return toMcpResult({ error: "Failed to search links" }, true);
+					}
+					const rpcCtx = buildRpcContext(ctx);
+					const allLinks = (await callRPCProcedure(
+						"links",
+						"list",
+						{ organizationId: orgId },
+						rpcCtx
+					)) as Array<{
+						id: string;
+						name: string;
+						slug: string;
+						targetUrl: string;
+						externalId: string | null;
+					}>;
+					const queryLower = args.query.toLowerCase();
+					const matches = allLinks.filter(
+						(link) =>
+							link.name.toLowerCase().includes(queryLower) ||
+							link.slug.toLowerCase().includes(queryLower) ||
+							link.targetUrl.toLowerCase().includes(queryLower) ||
+							link.externalId?.toLowerCase().includes(queryLower)
+					);
+					trackToolCompletion(ctx, "search_links", true);
+					return toMcpResult({
+						links: matches.map((link) => ({
+							id: link.id,
+							name: link.name,
+							slug: link.slug,
+							targetUrl: link.targetUrl,
+							externalId: link.externalId,
+						})),
+						count: matches.length,
+					});
+				} catch {
+					trackToolCompletion(ctx, "search_links", false);
+					return toMcpResult({ error: "Failed to search links" }, true);
+				}
 			},
 		},
 	};

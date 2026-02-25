@@ -77,17 +77,11 @@ async function ensureWebsiteAccess(
 	return new Error("Authentication required");
 }
 
-interface TopPageRow extends Record<string, unknown> {
-	path: string;
-	views: number;
-	unique_visitors: number;
-}
-
 export function createMcpAgentTools() {
 	return {
 		list_websites: tool({
 			description:
-				"List all websites accessible with the current API key. Call this FIRST to discover website IDs before any analytics query. Required before get_top_pages, execute_query_builder, or execute_sql_query.",
+				"List all websites accessible with the current API key. Call this FIRST to discover website IDs before any analytics query. Required before execute_query_builder or execute_sql_query.",
 			strict: true,
 			inputSchema: z.object({}),
 			execute: async (_args, options) => {
@@ -118,59 +112,6 @@ export function createMcpAgentTools() {
 						isPublic: w.isPublic,
 					})),
 					total: list.length,
-				};
-			},
-		}),
-		get_top_pages: tool({
-			description:
-				"Get top pages by page views for a website. Use websiteId from list_websites.",
-			strict: true,
-			inputSchema: z.object({
-				websiteId: z.string(),
-				limit: z.number().min(1).max(50).default(10),
-				days: z.number().min(1).max(90).default(7),
-			}),
-			execute: async (args, options) => {
-				const { websiteId, limit, days } = args;
-				const experimental_context = (
-					options as { experimental_context?: unknown }
-				).experimental_context;
-				const ctx = getContext(experimental_context);
-				const access = await ensureWebsiteAccess(websiteId, ctx);
-				if (access instanceof Error) {
-					throw new Error(access.message);
-				}
-				const sql = `
-					SELECT path, COUNT(*) AS views, uniq(anonymous_id) AS unique_visitors
-					FROM analytics.events 
-					WHERE client_id = {websiteId:String} AND event_name = 'screen_view' AND path != ''
-					AND time >= today() - INTERVAL {days:UInt32} DAY
-					GROUP BY path ORDER BY views DESC LIMIT {limit:UInt32}
-				`;
-				const result = await executeTimedQuery<TopPageRow>(
-					"MCP Agent Top Pages",
-					sql,
-					{ websiteId, days, limit },
-					{ websiteId, limit, days }
-				);
-				if (result.rowCount === 0) {
-					return {
-						pages: [],
-						summary: "No page views found.",
-						period: `Last ${days} days`,
-					};
-				}
-				const totalViews = result.data.reduce((s, p) => s + Number(p.views), 0);
-				return {
-					pages: result.data.map((p) => ({
-						path: p.path,
-						views: Number(p.views),
-						uniqueVisitors: Number(p.unique_visitors),
-						percentage: ((Number(p.views) / totalViews) * 100).toFixed(1),
-					})),
-					summary: `${result.rowCount} pages, ${totalViews.toLocaleString()} views in last ${days} days`,
-					totalViews,
-					period: `Last ${days} days`,
 				};
 			},
 		}),

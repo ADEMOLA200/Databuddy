@@ -9,6 +9,7 @@ export interface RunMcpAgentOptions {
 		ReturnType<typeof import("../../lib/api-key").getApiKeyFromHeader>
 	>;
 	userId: string | null;
+	timezone?: string;
 	priorMessages?: Array<{ role: "user" | "assistant"; content: string }>;
 }
 
@@ -19,6 +20,7 @@ export async function runMcpAgent(
 		requestHeaders: options.requestHeaders,
 		apiKey: options.apiKey,
 		userId: options.userId,
+		timezone: options.timezone,
 	});
 
 	const agent = new ToolLoopAgent({

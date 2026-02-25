@@ -3,11 +3,7 @@ import { formatContextForLLM } from "../config/context";
 import { CLICKHOUSE_SCHEMA_DOCS } from "../config/schema-docs";
 import { COMMON_AGENT_RULES } from "./shared";
 
-/**
- * Analytics-specific rules for data analysis and presentation.
- */
-const ANALYTICS_RULES = `<agent-specific-rules>
-**Bounce rate (CRITICAL):**
+const ANALYTICS_CORE_RULES = `**Bounce rate (CRITICAL):**
 - Bounce rate is ONLY available at site level (summary_metrics). It is a percentage 0–100.
 - top_pages, page_time_analysis, entry_pages, exit_pages do NOT include bounce_rate.
 - NEVER compute or infer per-page bounce rate from pageviews/visitors—that ratio can exceed 100% and is NOT bounce rate.
@@ -86,8 +82,9 @@ const ANALYTICS_RULES = `<agent-specific-rules>
 - Use tool results verbatim in tables and charts—no cosmetic rewrites
 - Format large numbers with commas for readability
 - Tables must be compact: ≤5 columns, short headers, include units (%, ms, s), no empty columns
-- When ambiguous, ask clarifying questions: "Did you mean last week (Mon-Sun) or last 7 days?"
+- When ambiguous, ask clarifying questions: "Did you mean last week (Mon-Sun) or last 7 days?"`;
 
+const ANALYTICS_CHART_RULES = `
 **Charts:**
 - When presenting time-series data, trends, comparisons, or distributions, include a chart using the JSON format below
 - Charts help visualize data patterns and make insights easier to understand
@@ -164,13 +161,28 @@ Rules:
 - JSON must be on its own line, separate from text
 - CRITICAL: When using a JSON component, do NOT also show a markdown table or repeat the same data in text
 - Pick ONE format: either JSON component OR markdown table - never both for the same data
-- After showing a component, you can add a brief follow-up question but don't repeat the data
+- After showing a component, you can add a brief follow-up question but don't repeat the data`;
+
+/**
+ * Analytics-specific rules for data analysis and presentation.
+ * Dashboard version includes chart/component formatting rules.
+ */
+const ANALYTICS_RULES = `<agent-specific-rules>
+${ANALYTICS_CORE_RULES}
+${ANALYTICS_CHART_RULES}
+</agent-specific-rules>`;
+
+/**
+ * MCP version: no chart/component formatting (MCP returns plain text).
+ */
+const MCP_ANALYTICS_RULES = `<agent-specific-rules>
+${ANALYTICS_CORE_RULES}
 </agent-specific-rules>`;
 
 const MCP_DISCOVERY_PREAMBLE = `<mcp-context>
 **CRITICAL - YOU HAVE NO WEBSITE PRE-SELECTED:**
 - You MUST call list_websites FIRST before any analytics query
-- Use the website IDs returned from list_websites for all tools (get_data, get_top_pages, execute_query_builder, execute_sql_query, goals, funnels, annotations, links)
+- Use the website IDs returned from list_websites for all tools (get_data, execute_query_builder, execute_sql_query, goals, funnels, annotations, links)
 - When multiple websites exist, ALWAYS state which website (name + domain) you are analyzing. Choose by context: marketing site (e.g. databuddy.cc) for pricing, docs, blog, landing pages; app (e.g. app.databuddy.cc) for product usage, dashboards, login. If unclear, ask the user.
 - If only one website exists, use it.
 </mcp-context>
@@ -219,7 +231,7 @@ ${MCP_OUTPUT_RULES}
 
 ${COMMON_AGENT_RULES}
 
-${ANALYTICS_RULES}
+${MCP_ANALYTICS_RULES}
 
 <background-data>
 <current_date>${ctx.currentDateTime}</current_date>
@@ -229,7 +241,7 @@ ${ANALYTICS_RULES}
 
 IMPORTANT CONTEXT VALUES:
 - Use current_date for time-sensitive operations
-- Use website_id from list_websites result when calling get_top_pages, execute_query_builder, execute_sql_query
+- Use website_id from list_websites result when calling execute_query_builder, execute_sql_query
 - Use execute_query_builder for pre-built analytics queries (preferred over custom SQL)
 - Use execute_sql_query only when you need custom SQL that isn't covered by query builders
 </background-data>

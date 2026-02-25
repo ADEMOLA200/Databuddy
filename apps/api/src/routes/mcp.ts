@@ -83,6 +83,12 @@ export const mcp = new Elysia({ prefix: "/v1/mcp" })
 			"get_data",
 			"get_schema",
 			"capabilities",
+			"list_funnels",
+			"get_funnel_analytics",
+			"list_goals",
+			"get_goal_analytics",
+			"list_links",
+			"search_links",
 		] as const;
 		for (const id of toolIds) {
 			const t = tools[id];

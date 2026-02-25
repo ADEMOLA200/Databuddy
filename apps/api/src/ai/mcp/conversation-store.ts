@@ -63,7 +63,8 @@ export async function appendToConversation(
 	userId: string | null,
 	apiKey: { id: string } | null,
 	userMessage: string,
-	assistantMessage: string
+	assistantMessage: string,
+	existingMessages?: ConversationMessage[]
 ): Promise<void> {
 	const redis = getRedisCache();
 	if (!redis) {
@@ -72,11 +73,13 @@ export async function appendToConversation(
 	const scope = scopeFor(userId, apiKey);
 	const key = redisKey(scope, conversationId);
 
-	const existing = await getConversationHistory(conversationId, userId, apiKey);
-	const updated: ConversationMessage[] = [
-		...existing,
-		{ role: "user", content: userMessage },
-		{ role: "assistant", content: assistantMessage },
+	const prior =
+		existingMessages ??
+		(await getConversationHistory(conversationId, userId, apiKey));
+	const updated = [
+		...prior,
+		{ role: "user" as const, content: userMessage },
+		{ role: "assistant" as const, content: assistantMessage },
 	].slice(-MAX_MESSAGES);
 
 	await redis.setex(key, TTL_SEC, JSON.stringify(updated));

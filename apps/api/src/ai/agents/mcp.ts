@@ -6,11 +6,17 @@ import { maxSteps } from "./analytics";
 
 export function createMcpAgentConfig(
 	model: (typeof models)["analytics"],
-	context: { requestHeaders: Headers; apiKey: unknown; userId: string | null }
+	context: {
+		requestHeaders: Headers;
+		apiKey: unknown;
+		userId: string | null;
+		timezone?: string;
+	}
 ) {
+	const timezone = context.timezone ?? "UTC";
 	const tools = createMcpAgentTools();
 	const system = buildAnalyticsInstructionsForMcp({
-		timezone: "UTC",
+		timezone,
 		currentDateTime: new Date().toISOString(),
 	});
 
@@ -18,7 +24,7 @@ export function createMcpAgentConfig(
 		userId: context.userId ?? "",
 		websiteId: "",
 		websiteDomain: "",
-		timezone: "UTC",
+		timezone,
 		currentDateTime: new Date().toISOString(),
 		chatId: crypto.randomUUID(),
 		requestHeaders: context.requestHeaders,
