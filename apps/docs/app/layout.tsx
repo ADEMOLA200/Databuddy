@@ -106,6 +106,26 @@ export default function Layout({ children }: { children: ReactNode }) {
 				src="https://ingest.promptwatch.com/js/client.min.js"
 				strategy="afterInteractive"
 			/>
+			{process.env.NODE_ENV === "production" && (
+				<>
+					<Script
+						dangerouslySetInnerHTML={{
+							__html: `
+								window.dataLayer = window.dataLayer || [];
+								function gtag(){dataLayer.push(arguments);}
+								gtag('js', new Date());
+								gtag('config', 'AW-17988229504');
+							`,
+						}}
+						id="gtag-init"
+						strategy="beforeInteractive"
+					/>
+					<Script
+						src="https://www.googletagmanager.com/gtag/js?id=AW-17988229504"
+						strategy="afterInteractive"
+					/>
+				</>
+			)}
 			<body>
 				<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
 					<NuqsAdapter>
