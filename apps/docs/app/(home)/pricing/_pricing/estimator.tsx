@@ -117,8 +117,8 @@ export function Estimator({
 									<Separator className="my-3" />
 									<p className="text-muted-foreground text-sm">
 										At this volume, we'll put together a custom plan with
-										dedicated support, SLAs, and volume pricing tailored to
-										your needs.
+										dedicated support, SLAs, and volume pricing tailored to your
+										needs.
 									</p>
 									<div className="mt-4 flex justify-end">
 										<SciFiButton asChild>

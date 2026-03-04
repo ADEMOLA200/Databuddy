@@ -511,8 +511,7 @@ ${link.ogDescription ? `- OG Description: ${link.ogDescription}` : ""}`,
 						link.name.toLowerCase().includes(queryLower) ||
 						link.slug.toLowerCase().includes(queryLower) ||
 						link.targetUrl.toLowerCase().includes(queryLower) ||
-						(link.externalId &&
-							link.externalId.toLowerCase().includes(queryLower))
+						(link.externalId?.toLowerCase().includes(queryLower) ?? false)
 				);
 
 				return {
