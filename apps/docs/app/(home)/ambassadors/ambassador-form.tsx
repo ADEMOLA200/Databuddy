@@ -70,7 +70,6 @@ export default function AmbassadorForm() {
 	const validateForm = (): boolean => {
 		const newErrors: Partial<Record<keyof FormData, string>> = {};
 
-		// Required field validations
 		if (!formData.name.trim()) {
 			newErrors.name = "Name is required";
 		} else if (formData.name.trim().length < 2) {
@@ -93,7 +92,6 @@ export default function AmbassadorForm() {
 				"Please provide more details (minimum 10 characters)";
 		}
 
-		// Optional field validations
 		if (
 			formData.xHandle &&
 			(formData.xHandle.includes("@") || formData.xHandle.includes("http"))
@@ -119,7 +117,6 @@ export default function AmbassadorForm() {
 		const { name, value } = e.target;
 		setFormData((prev) => ({ ...prev, [name]: value }));
 
-		// Clear error when user starts typing
 		if (errors[name as keyof FormData]) {
 			setErrors((prev) => ({ ...prev, [name]: undefined }));
 		}
@@ -128,7 +125,6 @@ export default function AmbassadorForm() {
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 
-		// Client-side validation
 		if (!validateForm()) {
 			toast.error("Please fix the validation errors before submitting.");
 			return;
@@ -138,7 +134,7 @@ export default function AmbassadorForm() {
 
 		try {
 			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), 30_000); // 30 second timeout
+			const timeoutId = setTimeout(() => controller.abort(), 30_000);
 
 			const response = await fetch("/api/ambassador/submit", {
 				method: "POST",
@@ -151,18 +147,17 @@ export default function AmbassadorForm() {
 
 			clearTimeout(timeoutId);
 
-			let data: any;
+			let data: Record<string, unknown>;
 			try {
-				data = await response.json();
-			} catch (_parseError) {
+				data = (await response.json()) as Record<string, unknown>;
+			} catch {
 				throw new Error("Invalid response from server. Please try again.");
 			}
 
 			if (!response.ok) {
-				// Handle specific error cases
 				if (response.status === 429) {
 					const resetTime = data.resetTime
-						? new Date(data.resetTime).toLocaleTimeString()
+						? new Date(String(data.resetTime)).toLocaleTimeString()
 						: "soon";
 					throw new Error(
 						`Too many submissions. Please try again after ${resetTime}.`
@@ -170,16 +165,19 @@ export default function AmbassadorForm() {
 				}
 
 				if (response.status === 400 && data.details) {
-					// Show validation errors
 					const errorMessage = Array.isArray(data.details)
-						? data.details.join("\n• ")
-						: data.error || "Validation failed";
+						? (data.details as string[]).join("\n• ")
+						: String(data.error || "Validation failed");
 					throw new Error(
 						`Please fix the following issues:\n• ${errorMessage}`
 					);
 				}
 
-				throw new Error(data.error || "Submission failed. Please try again.");
+				throw new Error(
+					typeof data.error === "string"
+						? data.error
+						: "Submission failed. Please try again."
+				);
 			}
 
 			toast.success("Application submitted successfully!", {
@@ -189,19 +187,14 @@ export default function AmbassadorForm() {
 			});
 			setIsSubmitted(true);
 		} catch (error) {
-			console.error("Form submission error:", error);
-
 			if (error instanceof Error) {
-				// Handle specific error types
 				if (error.name === "AbortError") {
 					toast.error(
 						"Request timed out. Please check your connection and try again."
 					);
 				} else {
-					// Handle multi-line error messages
 					const errorLines = error.message.split("\n");
 					if (errorLines.length > 1) {
-						// For validation errors with multiple lines, show as error toast
 						toast.error(errorLines[0], {
 							description: errorLines.slice(1).join("\n"),
 							duration: 5000,
@@ -244,7 +237,6 @@ export default function AmbassadorForm() {
 
 	return (
 		<div>
-			{/* Header */}
 			<div className="mb-8 text-center">
 				<h2 className="mb-4 font-semibold text-2xl sm:text-3xl lg:text-4xl">
 					Ambassador Application
@@ -254,10 +246,8 @@ export default function AmbassadorForm() {
 				</p>
 			</div>
 
-			{/* Form */}
 			<SciFiCard className="relative rounded border border-border bg-card/50 p-6 backdrop-blur-sm sm:p-8">
 				<form className="space-y-6" onSubmit={handleSubmit}>
-					{/* Personal Information */}
 					<div className="grid grid-cols-1 gap-6 md:grid-cols-2">
 						<FormField error={errors.name} label="Full Name" required>
 							<Input
@@ -299,7 +289,6 @@ export default function AmbassadorForm() {
 						</FormField>
 					</div>
 
-					{/* Social & Web Presence */}
 					<div className="grid grid-cols-1 gap-6 md:grid-cols-2">
 						<FormField
 							description="Enter your X (Twitter) handle without the @"
@@ -334,7 +323,6 @@ export default function AmbassadorForm() {
 						</FormField>
 					</div>
 
-					{/* Experience & Background */}
 					<FormField
 						description="Tell us about your experience with analytics, privacy, or developer tools (max 800 characters)"
 						label="Relevant Experience"
@@ -352,7 +340,6 @@ export default function AmbassadorForm() {
 						</div>
 					</FormField>
 
-					{/* Motivation */}
 					<FormField
 						description="Required field (max 1000 characters)"
 						error={errors.whyAmbassador}
@@ -374,7 +361,6 @@ export default function AmbassadorForm() {
 						</div>
 					</FormField>
 
-					{/* Audience & Reach */}
 					<FormField
 						description="Describe your audience size and engagement across platforms (max 600 characters)"
 						label="Audience & Reach"
@@ -392,7 +378,6 @@ export default function AmbassadorForm() {
 						</div>
 					</FormField>
 
-					{/* How did you hear about us */}
 					<FormField label="How did you hear about Databuddy?">
 						<Input
 							maxLength={200}
@@ -404,7 +389,6 @@ export default function AmbassadorForm() {
 						/>
 					</FormField>
 
-					{/* Submit Button */}
 					<div className="pt-4">
 						<SciFiButton
 							aria-describedby="submit-status"

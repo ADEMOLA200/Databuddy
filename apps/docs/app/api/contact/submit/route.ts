@@ -161,77 +161,37 @@ function buildSlackBlocks(data: ContactFormData, ip: string): unknown[] {
 
 async function sendToSlack(data: ContactFormData, ip: string): Promise<void> {
 	if (!SLACK_WEBHOOK_URL) {
-		console.warn(
-			"SLACK_WEBHOOK_URL not configured, skipping Slack notification"
-		);
 		return;
 	}
 
+	const blocks = buildSlackBlocks(data, ip);
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), SLACK_TIMEOUT_MS);
+
 	try {
-		const blocks = buildSlackBlocks(data, ip);
-		const controller = new AbortController();
-		const timeoutId = setTimeout(() => controller.abort(), SLACK_TIMEOUT_MS);
-
-		try {
-			const response = await fetch(SLACK_WEBHOOK_URL, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ blocks }),
-				signal: controller.signal,
-			});
-
-			clearTimeout(timeoutId);
-
-			if (!response.ok) {
-				const responseText = await response
-					.text()
-					.catch(() => "Unable to read response");
-				console.error(
-					{
-						status: response.status,
-						statusText: response.statusText,
-						response: responseText.slice(0, 200),
-					},
-					"Failed to send Slack webhook"
-				);
-			}
-		} catch (fetchError) {
-			clearTimeout(timeoutId);
-			if (fetchError instanceof Error && fetchError.name === "AbortError") {
-				console.error("Slack webhook request timed out after 10 seconds");
-			} else {
-				throw fetchError;
-			}
+		await fetch(SLACK_WEBHOOK_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ blocks }),
+			signal: controller.signal,
+		});
+	} catch (fetchError) {
+		if (fetchError instanceof Error && fetchError.name !== "AbortError") {
+			throw fetchError;
 		}
-	} catch (error) {
-		console.error(
-			{
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-			},
-			"Error sending to Slack webhook"
-		);
+	} finally {
+		clearTimeout(timeoutId);
 	}
 }
 
 export async function POST(request: NextRequest) {
 	const clientIP = getClientIP(request);
-	const userAgent = request.headers.get("user-agent") || "unknown";
 
 	try {
 		let formData: unknown;
 		try {
 			formData = await request.json();
-		} catch (jsonError) {
-			console.warn(
-				{
-					ip: clientIP,
-					userAgent,
-					error:
-						jsonError instanceof Error ? jsonError.message : String(jsonError),
-				},
-				"Invalid JSON in request body"
-			);
+		} catch {
 			return NextResponse.json(
 				{ error: "Invalid JSON format in request body" },
 				{ status: 400 }
@@ -249,33 +209,13 @@ export async function POST(request: NextRequest) {
 
 		const contactData = validation.data;
 
-		console.info(
-			{
-				name: contactData.fullName,
-				email: contactData.email,
-				business: contactData.businessName,
-				ip: clientIP,
-			},
-			`${contactData.fullName} (${contactData.email}) submitted a contact form`
-		);
-
 		await sendToSlack(contactData, clientIP);
 
 		return NextResponse.json({
 			success: true,
 			message: "Contact form submitted successfully",
 		});
-	} catch (error) {
-		console.error(
-			{
-				ip: clientIP,
-				userAgent,
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-			},
-			"Error processing contact form submission"
-		);
-
+	} catch {
 		return NextResponse.json(
 			{ error: "Internal server error" },
 			{ status: 500 }

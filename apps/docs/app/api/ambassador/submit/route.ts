@@ -1,7 +1,5 @@
-// import { createLogger } from "@databuddy/shared/logger";
 import { type NextRequest, NextResponse } from "next/server";
 
-// const logger = createLogger("ambassador-form");
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || "";
 const SLACK_TIMEOUT_MS = 10_000;
 
@@ -43,10 +41,6 @@ function getClientIP(request: NextRequest): string {
 	}
 
 	return "unknown";
-}
-
-function getUserAgent(request: NextRequest): string {
-	return request.headers.get("user-agent") || "unknown";
 }
 
 function isValidEmail(email: string): boolean {
@@ -207,80 +201,37 @@ async function sendToSlack(
 	ip: string
 ): Promise<void> {
 	if (!SLACK_WEBHOOK_URL) {
-		console.warn(
-			{},
-			"SLACK_WEBHOOK_URL not configured, skipping Slack notification"
-		);
 		return;
 	}
 
+	const blocks = buildSlackBlocks(data, ip);
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), SLACK_TIMEOUT_MS);
+
 	try {
-		const blocks = buildSlackBlocks(data, ip);
-		const controller = new AbortController();
-		const timeoutId = setTimeout(() => controller.abort(), SLACK_TIMEOUT_MS);
-
-		try {
-			const response = await fetch(SLACK_WEBHOOK_URL, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ blocks }),
-				signal: controller.signal,
-			});
-
-			clearTimeout(timeoutId);
-
-			if (!response.ok) {
-				const responseText = await response
-					.text()
-					.catch(() => "Unable to read response");
-				console.error(
-					{
-						status: response.status,
-						statusText: response.statusText,
-						response: responseText.slice(0, 200),
-					},
-					"Failed to send Slack webhook"
-				);
-			}
-		} catch (fetchError) {
-			clearTimeout(timeoutId);
-			if (fetchError instanceof Error && fetchError.name === "AbortError") {
-				console.error({}, "Slack webhook request timed out after 10 seconds");
-			} else {
-				throw fetchError;
-			}
+		await fetch(SLACK_WEBHOOK_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ blocks }),
+			signal: controller.signal,
+		});
+	} catch (fetchError) {
+		if (fetchError instanceof Error && fetchError.name !== "AbortError") {
+			throw fetchError;
 		}
-	} catch (error) {
-		console.error(
-			{
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-			},
-			"Error sending to Slack webhook"
-		);
+	} finally {
+		clearTimeout(timeoutId);
 	}
 }
 
 export async function POST(request: NextRequest) {
 	const clientIP = getClientIP(request);
-	const userAgent = getUserAgent(request);
 
 	try {
 		let formData: unknown;
 		try {
 			formData = await request.json();
-		} catch (jsonError) {
-			console.warn(
-				{
-					ip: clientIP,
-					userAgent,
-					error:
-						jsonError instanceof Error ? jsonError.message : String(jsonError),
-				},
-				"Invalid JSON in request body"
-			);
+		} catch {
 			return NextResponse.json(
 				{ error: "Invalid JSON format in request body" },
 				{ status: 400 }
@@ -290,10 +241,6 @@ export async function POST(request: NextRequest) {
 		const validation = validateFormData(formData);
 
 		if (!validation.valid) {
-			console.info(
-				{ errors: validation.errors, ip: clientIP },
-				"Form submission failed validation"
-			);
 			return NextResponse.json(
 				{ error: "Validation failed", details: validation.errors },
 				{ status: 400 }
@@ -302,33 +249,13 @@ export async function POST(request: NextRequest) {
 
 		const ambassadorData = validation.data;
 
-		console.info(
-			{
-				name: ambassadorData.name,
-				email: ambassadorData.email,
-				ip: clientIP,
-				userAgent,
-			},
-			`${ambassadorData.name} (${ambassadorData.email}) submitted an ambassador application`
-		);
-
 		await sendToSlack(ambassadorData, clientIP);
 
 		return NextResponse.json({
 			success: true,
 			message: "Ambassador application submitted successfully",
 		});
-	} catch (error) {
-		console.error(
-			{
-				ip: clientIP,
-				userAgent,
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-			},
-			"Error processing ambassador form submission"
-		);
-
+	} catch {
 		return NextResponse.json(
 			{ error: "Internal server error" },
 			{ status: 500 }
