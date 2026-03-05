@@ -14,6 +14,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 import { Card } from "@/components/ui/card";
 import type { ChartComponentProps } from "../../types";
 
@@ -91,17 +92,19 @@ export function TimeSeriesRenderer({
 	return (
 		<Card className={className ?? "gap-0 overflow-hidden border bg-card p-0"}>
 			<div className="dotted-bg bg-accent p-3">
-				<ResponsiveContainer height={180} width="100%">
-					<TimeSeriesChartContent
-						chartProps={chartProps}
-						cursorStyle={cursorStyle}
-						getColor={getColor}
-						id={id}
-						series={series}
-						tooltipContent={tooltipContent}
-						variant={variant}
-					/>
-				</ResponsiveContainer>
+				<ChartErrorBoundary fallbackClassName="h-[180px] w-full">
+					<ResponsiveContainer height={180} width="100%">
+						<TimeSeriesChartContent
+							chartProps={chartProps}
+							cursorStyle={cursorStyle}
+							getColor={getColor}
+							id={id}
+							series={series}
+							tooltipContent={tooltipContent}
+							variant={variant}
+						/>
+					</ResponsiveContainer>
+				</ChartErrorBoundary>
 			</div>
 			{title && (
 				<div className="flex items-center gap-2.5 border-t px-3 py-2.5">

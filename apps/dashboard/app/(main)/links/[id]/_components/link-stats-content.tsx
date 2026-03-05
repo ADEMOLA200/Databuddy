@@ -21,6 +21,7 @@ import {
 } from "recharts";
 import { DeviceTypeCell, StatCard } from "@/components/analytics";
 import { ReferrerSourceCell } from "@/components/atomic/ReferrerSourceCell";
+import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 import { EmptyState } from "@/components/empty-state";
 import { CountryFlag } from "@/components/icon";
 import { useOrganizationsContext } from "@/components/providers/organizations-provider";
@@ -185,94 +186,98 @@ function ClicksChart({
 
 	return (
 		<div style={{ height: `${height}px`, width: "100%" }}>
-			<ResponsiveContainer height="100%" width="100%">
-				<AreaChart
-					data={data}
-					margin={{ top: 20, right: 20, left: 10, bottom: 20 }}
-				>
-					<defs>
-						<linearGradient id="clicksGradient" x1="0" x2="0" y1="0" y2="1">
-							<stop
-								offset="0%"
-								stopColor="var(--color-primary)"
-								stopOpacity={0.3}
-							/>
-							<stop
-								offset="100%"
-								stopColor="var(--color-primary)"
-								stopOpacity={0.02}
-							/>
-						</linearGradient>
-					</defs>
-					<CartesianGrid
-						stroke="var(--sidebar-border)"
-						strokeDasharray="2 4"
-						strokeOpacity={0.3}
-						vertical={false}
-					/>
-					<XAxis
-						axisLine={false}
-						dataKey="date"
-						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-						tickFormatter={(value) => dayjs(value).format(xAxisFormat)}
-						tickLine={false}
-					/>
-					<YAxis
-						allowDecimals={false}
-						axisLine={false}
-						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-						tickLine={false}
-						width={45}
-					/>
-					<Tooltip
-						content={({ active, payload, label }) =>
-							active && payload?.[0] && typeof payload[0].value === "number" ? (
-								<div className="min-w-[160px] rounded border bg-popover p-3 shadow-lg">
-									<div className="mb-2 flex items-center gap-2 border-b pb-2">
-										<div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-										<p className="font-medium text-foreground text-xs">
-											{dayjs(label).format(tooltipFormat)}
-										</p>
-									</div>
-									<div className="flex items-center justify-between gap-3">
-										<div className="flex items-center gap-2">
-											<div
-												className="size-2.5 rounded-full"
-												style={{ backgroundColor: "var(--color-primary)" }}
-											/>
-											<span className="text-muted-foreground text-xs">
-												Clicks
+			<ChartErrorBoundary fallbackClassName="size-full">
+				<ResponsiveContainer height="100%" width="100%">
+					<AreaChart
+						data={data}
+						margin={{ top: 20, right: 20, left: 10, bottom: 20 }}
+					>
+						<defs>
+							<linearGradient id="clicksGradient" x1="0" x2="0" y1="0" y2="1">
+								<stop
+									offset="0%"
+									stopColor="var(--color-primary)"
+									stopOpacity={0.3}
+								/>
+								<stop
+									offset="100%"
+									stopColor="var(--color-primary)"
+									stopOpacity={0.02}
+								/>
+							</linearGradient>
+						</defs>
+						<CartesianGrid
+							stroke="var(--sidebar-border)"
+							strokeDasharray="2 4"
+							strokeOpacity={0.3}
+							vertical={false}
+						/>
+						<XAxis
+							axisLine={false}
+							dataKey="date"
+							tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+							tickFormatter={(value) => dayjs(value).format(xAxisFormat)}
+							tickLine={false}
+						/>
+						<YAxis
+							allowDecimals={false}
+							axisLine={false}
+							tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+							tickLine={false}
+							width={45}
+						/>
+						<Tooltip
+							content={({ active, payload, label }) =>
+								active &&
+								payload?.[0] &&
+								typeof payload[0].value === "number" ? (
+									<div className="min-w-[160px] rounded border bg-popover p-3 shadow-lg">
+										<div className="mb-2 flex items-center gap-2 border-b pb-2">
+											<div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+											<p className="font-medium text-foreground text-xs">
+												{dayjs(label).format(tooltipFormat)}
+											</p>
+										</div>
+										<div className="flex items-center justify-between gap-3">
+											<div className="flex items-center gap-2">
+												<div
+													className="size-2.5 rounded-full"
+													style={{ backgroundColor: "var(--color-primary)" }}
+												/>
+												<span className="text-muted-foreground text-xs">
+													Clicks
+												</span>
+											</div>
+											<span className="font-semibold text-foreground text-sm tabular-nums">
+												{formatMetricNumber(payload[0].value)}
 											</span>
 										</div>
-										<span className="font-semibold text-foreground text-sm tabular-nums">
-											{formatMetricNumber(payload[0].value)}
-										</span>
 									</div>
-								</div>
-							) : null
-						}
-						cursor={{
-							stroke: "var(--color-primary)",
-							strokeDasharray: "4 4",
-							strokeOpacity: 0.5,
-						}}
-					/>
-					<Area
-						activeDot={{
-							r: 4,
-							fill: "var(--color-primary)",
-							stroke: "var(--color-background)",
-							strokeWidth: 2,
-						}}
-						dataKey="clicks"
-						dot={false}
-						fill="url(#clicksGradient)"
-						stroke="var(--color-primary)"
-						strokeWidth={2.5}
-						type="monotone"
-					/>
-				</AreaChart>
-			</ResponsiveContainer>
+								) : null
+							}
+							cursor={{
+								stroke: "var(--color-primary)",
+								strokeDasharray: "4 4",
+								strokeOpacity: 0.5,
+							}}
+						/>
+						<Area
+							activeDot={{
+								r: 4,
+								fill: "var(--color-primary)",
+								stroke: "var(--color-background)",
+								strokeWidth: 2,
+							}}
+							dataKey="clicks"
+							dot={false}
+							fill="url(#clicksGradient)"
+							stroke="var(--color-primary)"
+							strokeWidth={2.5}
+							type="monotone"
+						/>
+					</AreaChart>
+				</ResponsiveContainer>
+			</ChartErrorBoundary>
 		</div>
 	);
 }

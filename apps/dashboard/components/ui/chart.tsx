@@ -3,6 +3,7 @@
 import * as React from 'react';
 import * as RechartsPrimitive from 'recharts';
 
+import { ChartErrorBoundary } from '@/components/chart-error-boundary';
 import { cn } from '@/lib/utils';
 
 // Format: { THEME_NAME: CSS_SELECTOR }
@@ -48,6 +49,12 @@ function ChartContainer({
 }) {
 	const uniqueId = React.useId();
 	const chartId = `chart-${id || uniqueId.replace(/:/g, '')}`;
+	const [mounted, setMounted] = React.useState(false);
+
+	React.useEffect(() => {
+		const frame = requestAnimationFrame(() => setMounted(true));
+		return () => cancelAnimationFrame(frame);
+	}, []);
 
 	return (
 		<ChartContext.Provider value={{ config }}>
@@ -61,9 +68,13 @@ function ChartContainer({
 				{...props}
 			>
 				<ChartStyle config={config} id={chartId} />
-				<RechartsPrimitive.ResponsiveContainer>
-					{children}
-				</RechartsPrimitive.ResponsiveContainer>
+				{mounted ? (
+					<ChartErrorBoundary fallbackClassName="size-full">
+						<RechartsPrimitive.ResponsiveContainer>
+							{children}
+						</RechartsPrimitive.ResponsiveContainer>
+					</ChartErrorBoundary>
+				) : null}
 			</div>
 		</ChartContext.Provider>
 	);

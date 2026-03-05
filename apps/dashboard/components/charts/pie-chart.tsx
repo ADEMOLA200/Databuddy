@@ -3,6 +3,7 @@
 import { ChartPieIcon } from "@phosphor-icons/react";
 import { memo, useCallback, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Sector } from "recharts";
+import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -157,39 +158,41 @@ const MiniPieChart = memo(
 				id={id}
 			>
 				<div className="dotted-bg flex h-32 items-center justify-center bg-accent">
-					<ResponsiveContainer height={120} width={120}>
-						<PieChart>
-							<Pie
-								activeIndex={activeIndex >= 0 ? activeIndex : undefined}
-								activeShape={renderActiveShape as never}
-								animationBegin={0}
-								animationDuration={400}
-								animationEasing="ease-out"
-								cx="50%"
-								cy="50%"
-								data={processedData}
-								dataKey="value"
-								innerRadius={innerRadius}
-								onMouseEnter={onPieEnter}
-								onMouseLeave={onPieLeave}
-								outerRadius={outerRadius}
-								paddingAngle={0}
-								strokeWidth={0}
-							>
-								{processedData.map((entry, index) => (
-									<Cell
-										fill={entry.color}
-										key={`${id}-cell-${entry.name}`}
-										style={{
-											opacity:
-												activeIndex === -1 || activeIndex === index ? 1 : 0.5,
-											transition: "opacity 150ms ease-out",
-										}}
-									/>
-								))}
-							</Pie>
-						</PieChart>
-					</ResponsiveContainer>
+					<ChartErrorBoundary fallbackClassName="size-full">
+						<ResponsiveContainer height={120} width={120}>
+							<PieChart>
+								<Pie
+									activeIndex={activeIndex >= 0 ? activeIndex : undefined}
+									activeShape={renderActiveShape as never}
+									animationBegin={0}
+									animationDuration={400}
+									animationEasing="ease-out"
+									cx="50%"
+									cy="50%"
+									data={processedData}
+									dataKey="value"
+									innerRadius={innerRadius}
+									onMouseEnter={onPieEnter}
+									onMouseLeave={onPieLeave}
+									outerRadius={outerRadius}
+									paddingAngle={0}
+									strokeWidth={0}
+								>
+									{processedData.map((entry, index) => (
+										<Cell
+											fill={entry.color}
+											key={`${id}-cell-${entry.name}`}
+											style={{
+												opacity:
+													activeIndex === -1 || activeIndex === index ? 1 : 0.5,
+												transition: "opacity 150ms ease-out",
+											}}
+										/>
+									))}
+								</Pie>
+							</PieChart>
+						</ResponsiveContainer>
+					</ChartErrorBoundary>
 				</div>
 				<div className="flex items-center gap-2.5 px-2.5 py-2.5">
 					<div className="flex size-7 shrink-0 items-center justify-center rounded bg-accent">

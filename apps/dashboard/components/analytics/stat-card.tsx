@@ -13,6 +13,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 import { Card } from "@/components/ui/card";
 import {
 	HoverCard,
@@ -420,9 +421,11 @@ const MiniChart = memo(
 		};
 
 		return (
-			<ResponsiveContainer height={100} width="100%">
-				{chartContent()}
-			</ResponsiveContainer>
+			<ChartErrorBoundary fallbackClassName="h-[100px] w-full">
+				<ResponsiveContainer height={100} width="100%">
+					{chartContent()}
+				</ResponsiveContainer>
+			</ChartErrorBoundary>
 		);
 	}
 );
