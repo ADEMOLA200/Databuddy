@@ -9,7 +9,6 @@ import {
 	setupUncaughtErrorHandlers,
 } from "@databuddy/rpc";
 import cors from "@elysiajs/cors";
-import { context } from "@opentelemetry/api";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { ORPCError, onError } from "@orpc/server";
@@ -18,13 +17,8 @@ import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { autumnHandler } from "autumn-js/elysia";
 import { Elysia } from "elysia";
 import { initLogger, log, parseError } from "evlog";
+import { createAxiomDrain } from "evlog/axiom";
 import { evlog, useLogger } from "evlog/elysia";
-import {
-	endRequestSpan,
-	initTracing,
-	shutdownTracing,
-	startRequestSpan,
-} from "./lib/tracing";
 import { agent } from "./routes/agent";
 import { health } from "./routes/health";
 import { insights } from "./routes/insights";
@@ -35,33 +29,25 @@ import { webhooks } from "./routes/webhooks/index";
 
 initLogger({
 	env: { service: "api" },
+	drain: createAxiomDrain(),
 });
-initTracing();
 setupUncaughtErrorHandlers();
 
 async function handleRpcRoute(
-	ctx: {
-		request: Request;
-		store: {
-			tracing?: {
-				activeContext?: ReturnType<typeof context.active> | null;
-			};
-		};
-	},
+	ctx: { request: Request },
 	handle: (
 		request: Request,
 		rpcContext: Awaited<ReturnType<typeof createRPCContext>>
 	) => Promise<{ matched: boolean; response?: Response }>
 ) {
-	const { request, store } = ctx;
+	const { request } = ctx;
 	try {
 		const rpcContext = await createRPCContext({ headers: request.headers });
 		const run = async () => {
 			const result = await handle(request, rpcContext);
 			return result.response ?? new Response("Not Found", { status: 404 });
 		};
-		const activeContext = store.tracing?.activeContext;
-		return activeContext ? context.with(activeContext, run) : run();
+		return run();
 	} catch (error) {
 		if (error instanceof ORPCError) {
 			recordORPCError({ code: error.code, message: error.message });
@@ -231,11 +217,6 @@ const openApiHandler = new OpenAPIHandler(docsRouter, {
 });
 
 const app = new Elysia()
-	.state("tracing", {
-		span: null as ReturnType<typeof startRequestSpan>["span"] | null,
-		activeContext: null as ReturnType<typeof context.active> | null | undefined,
-		startTime: 0,
-	})
 	.use(evlog())
 	.use(
 		cors({
@@ -259,33 +240,6 @@ const app = new Elysia()
 			})
 	)
 	.use(webhooks)
-	.onBeforeHandle(function startTrace({ request, path, store }) {
-		const method = request.method;
-		const startTime = Date.now();
-
-		const route = path.startsWith("/rpc/")
-			? path.slice(5)
-			: path.startsWith("/api/")
-				? path.slice(5)
-				: path;
-		const { span, activeContext } = startRequestSpan(
-			method,
-			request.url,
-			route
-		);
-
-		store.tracing = {
-			span,
-			activeContext,
-			startTime,
-		};
-	})
-	.onAfterHandle(function endTrace({ response, store }) {
-		if (store.tracing?.span && store.tracing.startTime) {
-			const statusCode = response instanceof Response ? response.status : 200;
-			endRequestSpan(store.tracing.span, statusCode, store.tracing.startTime);
-		}
-	})
 	.use(
 		autumnHandler({
 			identify: async ({ request }) => {
@@ -349,11 +303,8 @@ const app = new Elysia()
 			),
 		{ parse: "none" }
 	)
-	.onError(function handleError({ error, code, store }) {
+	.onError(function handleError({ error, code }) {
 		const statusCode = code === "NOT_FOUND" ? 404 : 500;
-		if (store.tracing?.span && store.tracing.startTime) {
-			endRequestSpan(store.tracing.span, statusCode, store.tracing.startTime);
-		}
 
 		const parsed = parseError(error);
 		const isDevelopment = process.env.NODE_ENV === "development";
@@ -389,24 +340,12 @@ export default {
 	port: Number.parseInt(process.env.PORT ?? "3001", 10),
 };
 
-process.on("SIGINT", async () => {
+process.on("SIGINT", () => {
 	log.info("lifecycle", "SIGINT received, shutting down gracefully");
-	await shutdownTracing().catch((error) =>
-		log.error({
-			lifecycle: "shutdown",
-			error: error instanceof Error ? error.message : String(error),
-		})
-	);
 	process.exit(0);
 });
 
-process.on("SIGTERM", async () => {
+process.on("SIGTERM", () => {
 	log.info("lifecycle", "SIGTERM received, shutting down gracefully");
-	await shutdownTracing().catch((error) =>
-		log.error({
-			lifecycle: "shutdown",
-			error: error instanceof Error ? error.message : String(error),
-		})
-	);
 	process.exit(0);
 });
