@@ -10,78 +10,78 @@ import {
 	websites,
 } from "@databuddy/db";
 import { getRedisCache } from "@databuddy/redis";
-import { Output, stepCountIs, ToolLoopAgent } from "ai";
+import { generateText, Output } from "ai";
 import dayjs from "dayjs";
 import { Elysia, t } from "elysia";
 import { useLogger } from "evlog/elysia";
 import { z } from "zod";
-import type { AppContext } from "../ai/config/context";
 import { gateway } from "../ai/config/models";
-import { buildAnalyticsInstructions } from "../ai/prompts/analytics";
-import { executeQueryBuilderTool } from "../ai/tools/execute-query-builder";
-import { getDataTool } from "../ai/tools/get-data";
-import { getTopPagesTool } from "../ai/tools/get-top-pages";
 import { mergeWideEvent } from "../lib/tracing";
+import { executeQuery } from "../query";
 
 const CACHE_TTL = 900;
 const CACHE_KEY_PREFIX = "ai-insights";
-const TIMEOUT_MS = 90_000;
+const TIMEOUT_MS = 60_000;
 const MAX_WEBSITES = 5;
 const CONCURRENCY = 3;
 
 const insightSchema = z.object({
-	title: z.string().describe("Brief headline under 60 chars"),
+	title: z
+		.string()
+		.describe(
+			"Brief headline under 60 chars with the key number, e.g. 'Visitors up 23% week-over-week'"
+		),
 	description: z
 		.string()
-		.describe("2-3 sentences with specific numbers from the data"),
+		.describe(
+			"2-3 sentences with specific numbers from BOTH periods. Always include the actual values and the delta."
+		),
 	suggestion: z
 		.string()
 		.describe(
-			'One concrete action, e.g. "Investigate the /checkout page for errors"'
+			'One concrete, specific action. Good: "Your /blog/seo-guide drove 40% of traffic - share it on social." Bad: "Monitor your traffic."'
 		),
 	severity: z.enum(["critical", "warning", "info"]),
 	sentiment: z
 		.enum(["positive", "neutral", "negative"])
 		.describe(
-			"positive = good trend, neutral = informational, negative = needs attention"
+			"positive = improving metric, neutral = stable, negative = declining or broken"
 		),
-	priority: z.number().min(1).max(10).describe("1-10 where 10 is most urgent"),
+	priority: z
+		.number()
+		.min(1)
+		.max(10)
+		.describe(
+			"1-10. Errors affecting users = 8-10, significant traffic change = 5-7, stable/informational = 1-4"
+		),
 	type: z.enum([
 		"error_spike",
+		"new_errors",
 		"traffic_drop",
 		"traffic_spike",
-		"vitals_degraded",
+		"bounce_rate_change",
+		"engagement_change",
+		"referrer_change",
+		"page_trend",
+		"positive_trend",
 		"performance",
-		"custom_event_spike",
 	]),
 	changePercent: z
 		.number()
 		.optional()
-		.describe("Percentage change if applicable"),
+		.describe("Percentage change between periods, e.g. -15.5 for a 15.5% drop"),
 });
 
 const insightsOutputSchema = z.object({
 	insights: z
 		.array(insightSchema)
 		.max(3)
-		.describe("1-3 actionable insights based on real data from tool calls"),
+		.describe(
+			"1-3 insights ranked by surprise-factor x impact. Focus on what changed and why it matters."
+		),
 });
 
 type ParsedInsight = z.infer<typeof insightSchema>;
-
-const INSIGHTS_PROMPT = `Analyze this website. Use get_data to fetch summary_metrics and top_pages for the last 7 days AND the previous 7 days in a single batched call. Compare the two periods.
-
-Look for:
-1. Traffic changes (pageviews, visitors) - any shift over 10%
-2. Error rate changes
-3. Notable page-level changes in the top pages
-
-Rules:
-- Always provide at least 1 insight, even if it is a positive or neutral observation (e.g. "Traffic is stable" or "Steady growth in visitors")
-- Include real numbers from the data in every description
-- If user annotations explain a change, still mention it but note it is expected
-- Focus on the most significant or unexpected changes first
-- Maximum 3 insights`;
 
 interface WebsiteInsight extends ParsedInsight {
 	id: string;
@@ -94,6 +94,78 @@ interface WebsiteInsight extends ParsedInsight {
 interface InsightsPayload {
 	insights: WebsiteInsight[];
 	source: "ai" | "fallback";
+}
+
+interface PeriodData {
+	summary: Record<string, unknown>[];
+	topPages: Record<string, unknown>[];
+	errorSummary: Record<string, unknown>[];
+	topReferrers: Record<string, unknown>[];
+}
+
+async function fetchPeriodData(
+	websiteId: string,
+	domain: string,
+	from: string,
+	to: string,
+	timezone: string
+): Promise<PeriodData> {
+	const base = { projectId: websiteId, from, to, timezone };
+
+	const [summary, topPages, errorSummary, topReferrers] =
+		await Promise.allSettled([
+			executeQuery({ ...base, type: "summary_metrics" }, domain, timezone),
+			executeQuery({ ...base, type: "top_pages", limit: 10 }, domain, timezone),
+			executeQuery({ ...base, type: "error_summary" }, domain, timezone),
+			executeQuery(
+				{ ...base, type: "top_referrers", limit: 10 },
+				domain,
+				timezone
+			),
+		]);
+
+	return {
+		summary: summary.status === "fulfilled" ? summary.value : [],
+		topPages: topPages.status === "fulfilled" ? topPages.value : [],
+		errorSummary: errorSummary.status === "fulfilled" ? errorSummary.value : [],
+		topReferrers: topReferrers.status === "fulfilled" ? topReferrers.value : [],
+	};
+}
+
+function formatDataForPrompt(
+	current: PeriodData,
+	previous: PeriodData,
+	currentRange: { from: string; to: string },
+	previousRange: { from: string; to: string }
+): string {
+	const sections: string[] = [];
+
+	sections.push(
+		`## Current Period (${currentRange.from} to ${currentRange.to})`
+	);
+	sections.push(`### Summary\n${JSON.stringify(current.summary)}`);
+	if (current.topPages.length > 0) {
+		sections.push(`### Top Pages\n${JSON.stringify(current.topPages)}`);
+	}
+	if (current.errorSummary.length > 0) {
+		sections.push(`### Errors\n${JSON.stringify(current.errorSummary)}`);
+	}
+	if (current.topReferrers.length > 0) {
+		sections.push(`### Top Referrers\n${JSON.stringify(current.topReferrers)}`);
+	}
+
+	sections.push(
+		`\n## Previous Period (${previousRange.from} to ${previousRange.to})`
+	);
+	sections.push(`### Summary\n${JSON.stringify(previous.summary)}`);
+	if (previous.topPages.length > 0) {
+		sections.push(`### Top Pages\n${JSON.stringify(previous.topPages)}`);
+	}
+	if (previous.errorSummary.length > 0) {
+		sections.push(`### Errors\n${JSON.stringify(previous.errorSummary)}`);
+	}
+
+	return sections.join("\n\n");
 }
 
 async function fetchRecentAnnotations(websiteId: string): Promise<string> {
@@ -126,56 +198,86 @@ async function fetchRecentAnnotations(websiteId: string): Promise<string> {
 		return `- ${date}: ${r.text}${tags}`;
 	});
 
-	return `\n\nUser annotations (known events that may explain traffic changes):\n${lines.join("\n")}`;
+	return `\n\nUser annotations (known events that may explain changes):\n${lines.join("\n")}`;
 }
 
-function createInsightsTools() {
-	return {
-		get_top_pages: getTopPagesTool,
-		get_data: getDataTool,
-		execute_query_builder: executeQueryBuilderTool,
-	};
-}
+const INSIGHTS_SYSTEM_PROMPT = `You are an analytics insights engine. Your job is to find the 1-3 most significant, actionable findings from week-over-week website data.
+
+Significance thresholds:
+- Traffic (pageviews/visitors/sessions): <5% change = only mention if nothing else notable. 5-15% = worth noting. >15% = significant. >30% = critical.
+- Errors: new error types = always report. Error rate up >0.5% = warning. Error rate up >2% = critical.
+- Bounce rate: change >5 percentage points = notable.
+- Pages: new page entering top 10 or page dropping out = notable. Individual page change >25% = significant.
+- Referrers: new source appearing or major source declining >20% = notable.
+
+Rules:
+- Every insight MUST include specific numbers from both periods (e.g. "1,234 visitors, up from 987 last week")
+- Every suggestion MUST be a concrete next step, not generic advice
+- If annotations explain a change, mention it but still report the data
+- If everything is stable, return ONE positive/neutral insight (e.g. "Steady at 2,400 weekly visitors")
+- Rank by surprise-factor x business-impact
+- Never fabricate or round numbers beyond what's in the data`;
 
 async function analyzeWebsite(
 	websiteId: string,
 	domain: string,
-	timezone: string,
-	userId: string,
-	headers: Headers
+	timezone: string
 ): Promise<ParsedInsight[]> {
-	const appContext: AppContext = {
-		userId,
-		websiteId,
-		websiteDomain: domain,
-		timezone,
-		currentDateTime: new Date().toISOString(),
-		chatId: `insights-${websiteId}`,
-		requestHeaders: headers,
+	const now = dayjs();
+	const currentRange = {
+		from: now.subtract(7, "day").format("YYYY-MM-DD"),
+		to: now.format("YYYY-MM-DD"),
+	};
+	const previousRange = {
+		from: now.subtract(14, "day").format("YYYY-MM-DD"),
+		to: now.subtract(7, "day").format("YYYY-MM-DD"),
 	};
 
-	const agent = new ToolLoopAgent({
-		model: gateway.chat("anthropic/claude-sonnet-4-5"),
-		instructions: buildAnalyticsInstructions(appContext),
-		tools: createInsightsTools(),
-		output: Output.object({ schema: insightsOutputSchema }),
-		stopWhen: stepCountIs(10),
-		temperature: 0.2,
-		experimental_context: appContext,
-	});
+	const [current, previous, annotationContext] = await Promise.all([
+		fetchPeriodData(
+			websiteId,
+			domain,
+			currentRange.from,
+			currentRange.to,
+			timezone
+		),
+		fetchPeriodData(
+			websiteId,
+			domain,
+			previousRange.from,
+			previousRange.to,
+			timezone
+		),
+		fetchRecentAnnotations(websiteId),
+	]);
+
+	const hasData = current.summary.length > 0 || current.topPages.length > 0;
+	if (!hasData) {
+		return [];
+	}
+
+	const dataSection = formatDataForPrompt(
+		current,
+		previous,
+		currentRange,
+		previousRange
+	);
+
+	const prompt = `Analyze this website's week-over-week data and return insights.\n\n${dataSection}${annotationContext}`;
 
 	try {
-		const annotationContext = await fetchRecentAnnotations(websiteId);
-		const prompt = INSIGHTS_PROMPT + annotationContext;
-
-		const result = await agent.generate({
-			messages: [{ role: "user" as const, content: prompt }],
-			timeout: TIMEOUT_MS,
+		const result = await generateText({
+			model: gateway.chat("anthropic/claude-sonnet-4-5"),
+			output: Output.object({ schema: insightsOutputSchema }),
+			system: INSIGHTS_SYSTEM_PROMPT,
+			prompt,
+			temperature: 0.2,
+			abortSignal: AbortSignal.timeout(TIMEOUT_MS),
 		});
 
 		if (!result.output) {
-			useLogger().warn("Agent returned no structured output", {
-				insights: { websiteId, textPreview: result.text?.slice(0, 300) },
+			useLogger().warn("No structured output from insights model", {
+				insights: { websiteId },
 			});
 			return [];
 		}
@@ -238,7 +340,7 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 	})
 	.post(
 		"/ai",
-		async ({ body, user, request }) => {
+		async ({ body, user }) => {
 			const userId = user?.id;
 			if (!userId) {
 				mergeWideEvent({ insights_ai_error: "missing_user_id" });
@@ -301,9 +403,7 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 						const results = await analyzeWebsite(
 							site.id,
 							site.domain,
-							timezone,
-							userId,
-							request.headers
+							timezone
 						);
 						return results.map(
 							(insight, i): WebsiteInsight => ({
