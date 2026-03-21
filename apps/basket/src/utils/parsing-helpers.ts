@@ -1,5 +1,7 @@
 import { logBlockedTraffic } from "@lib/blocked-traffic";
-import { record, setAttributes } from "@lib/tracing";
+import { record } from "@lib/tracing";
+import { log } from "evlog";
+import { useLogger } from "evlog/elysia";
 import { VALIDATION_LIMITS } from "@utils/validation";
 import type { z } from "zod";
 
@@ -34,11 +36,16 @@ export function validateEventSchema<T>(
 				undefined,
 				clientId
 			);
-			setAttributes({
-				validation_failed: true,
-				validation_reason: "invalid_schema",
-				schema_error_count: parseResult.error.issues.length,
-			});
+			const validationContext = {
+				failed: true,
+				reason: "invalid_schema" as const,
+				issueCount: parseResult.error.issues.length,
+			};
+			try {
+				useLogger().set({ validation: validationContext });
+			} catch {
+				log.info({ validation: validationContext });
+			}
 			return {
 				success: false,
 				error: { issues: parseResult.error.issues },
@@ -98,9 +105,6 @@ export function parseProperties(properties: unknown): string {
 	return properties ? JSON.stringify(properties) : "{}";
 }
 
-/**
- * Creates standardized bot check result
- */
 export interface BotCheckResult {
 	isBot: boolean;
 	response?: {

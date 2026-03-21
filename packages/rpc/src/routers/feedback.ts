@@ -7,7 +7,7 @@ import {
 	sql,
 } from "@databuddy/db";
 import type { db as DbType } from "@databuddy/db";
-import { logger } from "@databuddy/shared/logger";
+import { logger } from "../lib/logger";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
 import { rpcError } from "../errors";

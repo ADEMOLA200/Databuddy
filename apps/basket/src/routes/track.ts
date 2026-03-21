@@ -2,9 +2,10 @@ import { getWebsiteByIdV2, resolveApiKeyOwnerId } from "@hooks/auth";
 import { getApiKeyFromHeader, hasKeyScope } from "@lib/api-key";
 import { checkAutumnUsage } from "@lib/billing";
 import { insertCustomEvents } from "@lib/event-service";
-import { captureError, record, setAttributes } from "@lib/tracing";
+import { captureError, record } from "@lib/tracing";
 import { VALIDATION_LIMITS, validatePayloadSize } from "@utils/validation";
 import { Elysia } from "elysia";
+import { useLogger } from "evlog/elysia";
 import { z } from "zod";
 
 const trackEventSchema = z.union([
@@ -36,16 +37,16 @@ const trackEventSchema = z.union([
 
 type AuthResult =
 	| {
-			success: true;
-			ownerId: string;
-			websiteId?: string;
-			organizationId?: string;
-	  }
+		success: true;
+		ownerId: string;
+		websiteId?: string;
+		organizationId?: string;
+	}
 	| {
-			success: false;
-			error: { status: string; message: string };
-			status: number;
-	  };
+		success: false;
+		error: { status: string; message: string };
+		status: number;
+	};
 
 function json(data: unknown, status: number): Response {
 	return new Response(JSON.stringify(data), {
@@ -75,11 +76,14 @@ function resolveAuth(
 	websiteIdParam?: string
 ): Promise<AuthResult> {
 	return record("resolveAuth", async () => {
+		const log = useLogger();
 		const apiKey = await getApiKeyFromHeader(headers);
 
 		if (apiKey) {
 			if (!hasKeyScope(apiKey, "track:events")) {
-				setAttributes({ auth_failed: true, auth_reason: "missing_scope" });
+				log.set({
+					auth: { ok: false, reason: "missing_scope", method: "api_key" },
+				});
 				return {
 					success: false,
 					error: {
@@ -92,7 +96,9 @@ function resolveAuth(
 
 			const ownerId = apiKey.organizationId ?? apiKey.userId;
 			if (!ownerId) {
-				setAttributes({ auth_failed: true, auth_reason: "missing_owner" });
+				log.set({
+					auth: { ok: false, reason: "missing_owner", method: "api_key" },
+				});
 				return {
 					success: false,
 					error: { status: "error", message: "API key missing owner" },
@@ -100,7 +106,9 @@ function resolveAuth(
 				};
 			}
 
-			setAttributes({ auth_method: "api_key", auth_success: true });
+			log.set({
+				auth: { ok: true, method: "api_key", organizationId: apiKey.organizationId ?? undefined },
+			});
 			return {
 				success: true,
 				ownerId,
@@ -109,7 +117,7 @@ function resolveAuth(
 		}
 
 		if (!websiteIdParam) {
-			setAttributes({ auth_failed: true, auth_reason: "no_credentials" });
+			log.set({ auth: { ok: false, reason: "no_credentials" } });
 			return {
 				success: false,
 				error: {
@@ -122,7 +130,9 @@ function resolveAuth(
 
 		const website = await getWebsiteByIdV2(websiteIdParam);
 		if (!website) {
-			setAttributes({ auth_failed: true, auth_reason: "website_not_found" });
+			log.set({
+				auth: { ok: false, reason: "website_not_found", websiteId: websiteIdParam },
+			});
 			return {
 				success: false,
 				error: { status: "error", message: "Website not found" },
@@ -131,7 +141,9 @@ function resolveAuth(
 		}
 
 		if (!website.organizationId) {
-			setAttributes({ auth_failed: true, auth_reason: "no_organization" });
+			log.set({
+				auth: { ok: false, reason: "no_organization", websiteId: websiteIdParam },
+			});
 			return {
 				success: false,
 				error: {
@@ -142,7 +154,14 @@ function resolveAuth(
 			};
 		}
 
-		setAttributes({ auth_method: "website_id", auth_success: true });
+		log.set({
+			auth: {
+				ok: true,
+				method: "website_id",
+				websiteId: websiteIdParam,
+				organizationId: website.organizationId,
+			},
+		});
 		return {
 			success: true,
 			ownerId: website.organizationId,
@@ -155,16 +174,20 @@ function resolveAuth(
 export const trackRoute = new Elysia().post(
 	"/track",
 	async ({ body, query, request }) => {
+		const log = useLogger();
+		log.set({ route: "track" });
 		const typedBody = body as unknown;
 		const typedQuery = query as Record<string, string>;
 
 		try {
 			if (!validatePayloadSize(typedBody, VALIDATION_LIMITS.PAYLOAD_MAX_SIZE)) {
+				log.set({ rejected: "payload_too_large" });
 				return json({ status: "error", message: "Payload too large" }, 413);
 			}
 
 			const parseResult = trackEventSchema.safeParse(typedBody);
 			if (!parseResult.success) {
+				log.set({ rejected: "schema" });
 				return json(
 					{
 						status: "error",
@@ -181,8 +204,11 @@ export const trackRoute = new Elysia().post(
 
 			const auth = await resolveAuth(request.headers, websiteIdParam);
 			if (!auth.success) {
+				log.set({ rejected: "auth", authError: auth.error.message });
 				return json(auth.error, auth.status);
 			}
+
+			log.set({ ownerId: auth.ownerId, websiteId: auth.websiteId, count: events.length });
 
 			const billingUserId = auth.organizationId
 				? await resolveApiKeyOwnerId(auth.organizationId)
@@ -193,6 +219,7 @@ export const trackRoute = new Elysia().post(
 					api_route: "track",
 				});
 				if ("exceeded" in billing) {
+					log.set({ rejected: "billing_exceeded" });
 					return billing.response;
 				}
 			}
@@ -217,6 +244,7 @@ export const trackRoute = new Elysia().post(
 				200
 			);
 		} catch (error) {
+			log.error(error instanceof Error ? error : new Error(String(error)));
 			captureError(error, { message: "Error processing track events" });
 			return json({ status: "error", message: "Internal server error" }, 500);
 		}

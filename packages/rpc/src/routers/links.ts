@@ -10,7 +10,7 @@ import {
 	invalidateLinkCache,
 	setCachedLink,
 } from "@databuddy/redis";
-import { logger } from "@databuddy/shared/logger";
+import { logger } from "../lib/logger";
 import { randomUUIDv7 } from "bun";
 import { customAlphabet } from "nanoid";
 import { z } from "zod";

@@ -1,7 +1,7 @@
 import { and, db, eq, flags, isNull, or } from "@databuddy/db";
 import { cacheable } from "@databuddy/redis";
 import { Elysia, t } from "elysia";
-import { logger } from "@/lib/logger";
+import { useLogger } from "evlog/elysia";
 import { record, setAttributes } from "@/lib/tracing";
 
 const flagQuerySchema = t.Object({
@@ -205,7 +205,6 @@ export function parseProperties(
 	try {
 		return JSON.parse(propertiesJson);
 	} catch (error) {
-		logger.warn({ error, propertiesJson }, "Invalid properties JSON");
 		return {};
 	}
 }
@@ -495,16 +494,17 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 						properties: parseProperties(query.properties),
 					};
 
-					logger.debug(
-						{
-							key: query.key,
-							clientId: query.clientId,
-							userId: query.userId,
-							email: query.email,
-							environment: query.environment,
+					useLogger().set({
+						flags: {
+							evaluationRequest: {
+								key: query.key,
+								clientId: query.clientId,
+								userId: query.userId,
+								email: query.email,
+								environment: query.environment,
+							},
 						},
-						"Flag evaluation request"
-					);
+					});
 
 					const flag = await getCachedFlag(
 						query.key,
@@ -548,9 +548,9 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 					return result;
 				} catch (error) {
 					setAttributes({ flag_error: true });
-					logger.error(
-						{ error, key: query.key, clientId: query.clientId },
-						"Flag evaluation failed"
+					useLogger().error(
+						error instanceof Error ? error : new Error(String(error)),
+						{ flags: { key: query.key, clientId: query.clientId } }
 					);
 					set.status = 500;
 					return {
@@ -630,9 +630,9 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 					};
 				} catch (error) {
 					setAttributes({ flag_error: true });
-					logger.error(
-						{ error, clientId: query.clientId },
-						"Bulk flag evaluation failed"
+					useLogger().error(
+						error instanceof Error ? error : new Error(String(error)),
+						{ flags: { bulk: true, clientId: query.clientId } }
 					);
 					set.status = 500;
 					return {
@@ -691,9 +691,9 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 					};
 				} catch (error) {
 					setAttributes({ flag_error: true });
-					logger.error(
-						{ error, clientId: query.clientId },
-						"Flag definitions fetch failed"
+					useLogger().error(
+						error instanceof Error ? error : new Error(String(error)),
+						{ flags: { definitions: true, clientId: query.clientId } }
 					);
 					set.status = 500;
 					return {

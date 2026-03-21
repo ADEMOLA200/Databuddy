@@ -1,5 +1,5 @@
 import { and, db, eq, uptimeSchedules } from "@databuddy/db";
-import { logger } from "@databuddy/shared/logger";
+import { logger } from "../lib/logger";
 import { Client } from "@upstash/qstash";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";

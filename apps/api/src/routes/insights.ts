@@ -10,10 +10,10 @@ import {
 	websites,
 } from "@databuddy/db";
 import { getRedisCache } from "@databuddy/redis";
-import { logger } from "@databuddy/shared/logger";
 import { Output, stepCountIs, ToolLoopAgent } from "ai";
 import dayjs from "dayjs";
 import { Elysia, t } from "elysia";
+import { useLogger } from "evlog/elysia";
 import { z } from "zod";
 import type { AppContext } from "../ai/config/context";
 import { gateway } from "../ai/config/models";
@@ -173,16 +173,17 @@ async function analyzeWebsite(
 		});
 
 		if (!result.output) {
-			logger.warn(
-				{ websiteId, text: result.text?.slice(0, 300) },
-				"Agent returned no structured output"
-			);
+			useLogger().warn("Agent returned no structured output", {
+				insights: { websiteId, textPreview: result.text?.slice(0, 300) },
+			});
 			return [];
 		}
 
 		return result.output.insights;
 	} catch (error) {
-		logger.warn({ websiteId, error }, "Failed to generate insights");
+		useLogger().warn("Failed to generate insights", {
+			insights: { websiteId, error },
+		});
 		return [];
 	}
 }
@@ -318,20 +319,20 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 				if (redis && sorted.length > 0) {
 					redis
 						.setex(cacheKey, CACHE_TTL, JSON.stringify(payload))
-						.catch(() => {});
+						.catch(() => { });
 				}
 
 				if (redis && sorted.length === 0) {
 					redis
 						.setex(cacheKey, CACHE_TTL / 3, JSON.stringify(payload))
-						.catch(() => {});
+						.catch(() => { });
 				}
 
 				return { success: true, ...payload };
 			} catch (error) {
-				logger.error(
-					{ error, organizationId },
-					"AI insights generation failed"
+				useLogger().error(
+					error instanceof Error ? error : new Error(String(error)),
+					{ insights: { organizationId } }
 				);
 				return { success: false, insights: [], source: "fallback" };
 			}

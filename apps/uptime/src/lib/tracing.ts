@@ -7,6 +7,7 @@ import {
 	ATTR_SERVICE_NAME,
 	ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
+import { log } from "evlog";
 import pkg from "../../package.json";
 
 let sdk: NodeSDK | null = null;
@@ -94,7 +95,7 @@ export function record<T>(name: string, fn: () => Promise<T> | T): Promise<T> {
 }
 
 /**
- * Capture error in active span and log to console
+ * Capture error in active span and log via evlog
  */
 export function captureError(
 	error: unknown,
@@ -104,7 +105,8 @@ export function captureError(
 	const errorMessage = errorObj.message;
 	const errorStack = errorObj.stack;
 
-	console.error("[uptime] Error:", errorMessage, {
+	log.error({
+		uptime: "captureError",
 		error: errorMessage,
 		stack: errorStack,
 		...(attributes ?? {}),

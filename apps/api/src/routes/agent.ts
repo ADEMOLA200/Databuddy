@@ -9,6 +9,7 @@ import {
 	type UIMessage,
 } from "ai";
 import { Elysia, t } from "elysia";
+import { useLogger } from "evlog/elysia";
 import type { AgentConfig, AgentType } from "../ai/agents";
 import { createAgentConfig } from "../ai/agents";
 import { trackAgentEvent } from "../lib/databuddy";
@@ -184,12 +185,14 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 						user_id: userId,
 					});
 
-					console.log("[Agent] Creating agent", {
-						type: agentType,
-						model,
-						websiteId: body.websiteId,
-						messageCount: body.messages.length,
-						lastMessage: getLastMessagePreview(body.messages),
+					useLogger().info("Creating agent", {
+						agent: {
+							type: agentType,
+							model,
+							websiteId: body.websiteId,
+							messageCount: body.messages.length,
+							lastMessage: getLastMessagePreview(body.messages),
+						},
 					});
 
 					const config = createAgentConfig(agentType, {

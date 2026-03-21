@@ -5,6 +5,7 @@
  */
 
 import { chQuery } from "@databuddy/db";
+import { useLogger } from "evlog/elysia";
 import {
 	ANALYTICS_TABLES,
 	getColumnDefinition,
@@ -418,7 +419,10 @@ export async function executeCustomQuery(
 			};
 		}
 
-		console.error("Custom query execution error:", error);
+		useLogger().error(
+			error instanceof Error ? error : new Error(String(error)),
+			{ customQuery: true }
+		);
 		const isDevelopment = process.env.NODE_ENV === "development";
 		return {
 			success: false,

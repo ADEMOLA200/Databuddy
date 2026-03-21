@@ -8,7 +8,6 @@ import {
 	recordORPCError,
 	setupUncaughtErrorHandlers,
 } from "@databuddy/rpc";
-import { logger } from "@databuddy/shared/logger";
 import cors from "@elysiajs/cors";
 import { context } from "@opentelemetry/api";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
@@ -18,6 +17,8 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { autumnHandler } from "autumn-js/elysia";
 import { Elysia } from "elysia";
+import { initLogger, log, parseError } from "evlog";
+import { evlog, useLogger } from "evlog/elysia";
 import {
 	endRequestSpan,
 	initTracing,
@@ -32,6 +33,9 @@ import { publicApi } from "./routes/public";
 import { query } from "./routes/query";
 import { webhooks } from "./routes/webhooks/index";
 
+initLogger({
+	env: { service: "api" },
+});
 initTracing();
 setupUncaughtErrorHandlers();
 
@@ -62,7 +66,10 @@ async function handleRpcRoute(
 		if (error instanceof ORPCError) {
 			recordORPCError({ code: error.code, message: error.message });
 		}
-		logger.error({ error }, "RPC handler failed");
+		useLogger().error(
+			error instanceof Error ? error : new Error(String(error)),
+			{ rpc: "handler" }
+		);
 		return new Response("Internal Server Error", { status: 500 });
 	}
 }
@@ -71,7 +78,9 @@ const rpcHandler = new RPCHandler(appRouter, {
 	interceptors: [
 		createAbortSignalInterceptor(),
 		onError((error) => {
-			logger.error(error);
+			useLogger().error(
+				error instanceof Error ? error : new Error(String(error))
+			);
 		}),
 	],
 });
@@ -214,7 +223,9 @@ const openApiHandler = new OpenAPIHandler(docsRouter, {
 	interceptors: [
 		createAbortSignalInterceptor(),
 		onError((error) => {
-			logger.error(error);
+			useLogger().error(
+				error instanceof Error ? error : new Error(String(error))
+			);
 		}),
 	],
 });
@@ -225,6 +236,7 @@ const app = new Elysia()
 		activeContext: null as ReturnType<typeof context.active> | null | undefined,
 		startTime: 0,
 	})
+	.use(evlog())
 	.use(
 		cors({
 			credentials: true,
@@ -302,7 +314,10 @@ const app = new Elysia()
 						},
 					};
 				} catch (error) {
-					logger.error({ error }, "Failed to get session for autumn handler");
+					useLogger().error(
+						error instanceof Error ? error : new Error(String(error)),
+						{ autumn: "identify" }
+					);
 					return null;
 				}
 			},
@@ -340,17 +355,30 @@ const app = new Elysia()
 			endRequestSpan(store.tracing.span, statusCode, store.tracing.startTime);
 		}
 
-		const errorMessage = error instanceof Error ? error.message : String(error);
+		const parsed = parseError(error);
 		const isDevelopment = process.env.NODE_ENV === "development";
-		logger.error({ error, code }, errorMessage);
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		const safeClientError =
+			isDevelopment || statusCode === 404
+				? errorMessage
+				: "An internal server error occurred";
+		const exposeStructured =
+			isDevelopment || (parsed.status >= 400 && parsed.status < 500);
 
 		return new Response(
 			JSON.stringify({
 				success: false,
-				error: isDevelopment
-					? errorMessage
-					: "An internal server error occurred",
+				error: safeClientError,
 				code: code ?? "INTERNAL_SERVER_ERROR",
+				...(exposeStructured && parsed.why != null && parsed.why !== ""
+					? { why: parsed.why }
+					: {}),
+				...(exposeStructured && parsed.fix != null && parsed.fix !== ""
+					? { fix: parsed.fix }
+					: {}),
+				...(exposeStructured && parsed.link != null && parsed.link !== ""
+					? { link: parsed.link }
+					: {}),
 			}),
 			{ status: statusCode, headers: { "Content-Type": "application/json" } }
 		);
@@ -362,17 +390,23 @@ export default {
 };
 
 process.on("SIGINT", async () => {
-	logger.info("SIGINT received, shutting down gracefully...");
+	log.info("lifecycle", "SIGINT received, shutting down gracefully");
 	await shutdownTracing().catch((error) =>
-		logger.error({ error }, "Shutdown error")
+		log.error({
+			lifecycle: "shutdown",
+			error: error instanceof Error ? error.message : String(error),
+		})
 	);
 	process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
-	logger.info("SIGTERM received, shutting down gracefully...");
+	log.info("lifecycle", "SIGTERM received, shutting down gracefully");
 	await shutdownTracing().catch((error) =>
-		logger.error({ error }, "Shutdown error")
+		log.error({
+			lifecycle: "shutdown",
+			error: error instanceof Error ? error.message : String(error),
+		})
 	);
 	process.exit(0);
 });

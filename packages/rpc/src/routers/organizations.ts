@@ -7,7 +7,7 @@ import {
 	invitation,
 	organization,
 } from "@databuddy/db";
-import { logger } from "@databuddy/shared/logger";
+import { logger } from "../lib/logger";
 import { getPendingInvitationsSchema } from "@databuddy/validation";
 import { Autumn as autumn } from "autumn-js";
 import { z } from "zod";

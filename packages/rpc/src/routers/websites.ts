@@ -10,7 +10,7 @@ import {
 	WebsiteNotFoundError,
 	WebsiteService,
 } from "@databuddy/services/websites";
-import { logger } from "@databuddy/shared/logger";
+import { logger } from "../lib/logger";
 import type { ProcessedMiniChartData } from "@databuddy/shared/types/website";
 import {
 	createWebsiteSchema,

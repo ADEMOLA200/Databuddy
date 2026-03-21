@@ -7,7 +7,7 @@ import {
 import { checkAutumnUsage } from "@lib/billing";
 import { logBlockedTraffic } from "@lib/blocked-traffic";
 import { sendEvent } from "@lib/producer";
-import { record, setAttributes } from "@lib/tracing";
+import { record } from "@lib/tracing";
 import { extractIpFromRequest } from "@utils/ip-geo";
 import { detectBot } from "@utils/user-agent";
 import {
@@ -15,6 +15,7 @@ import {
 	VALIDATION_LIMITS,
 	validatePayloadSize,
 } from "@utils/validation";
+import { useLogger } from "evlog/elysia";
 
 interface ValidationResult {
 	success: boolean;
@@ -45,8 +46,8 @@ export function getWebsiteSecuritySettings(
 	return {
 		allowedOrigins: Array.isArray(s.allowedOrigins)
 			? s.allowedOrigins.filter(
-					(item): item is string => typeof item === "string"
-				)
+				(item): item is string => typeof item === "string"
+			)
 			: undefined,
 		allowedIps: Array.isArray(s.allowedIps)
 			? s.allowedIps.filter((item): item is string => typeof item === "string")
@@ -63,6 +64,8 @@ export function validateRequest(
 	request: Request
 ): Promise<ValidationResult | ValidationError> {
 	return record("validateRequest", async () => {
+		const log = useLogger();
+
 		if (!validatePayloadSize(body, VALIDATION_LIMITS.PAYLOAD_MAX_SIZE)) {
 			logBlockedTraffic(
 				request,
@@ -71,10 +74,7 @@ export function validateRequest(
 				"payload_too_large",
 				"Validation Error"
 			);
-			setAttributes({
-				validation_failed: true,
-				validation_reason: "payload_too_large",
-			});
+			log.set({ validation: { failed: true, reason: "payload_too_large" } });
 			return {
 				error: new Response(
 					JSON.stringify({ status: "error", message: "Payload too large" }),
@@ -109,10 +109,7 @@ export function validateRequest(
 				"missing_client_id",
 				"Validation Error"
 			);
-			setAttributes({
-				validation_failed: true,
-				validation_reason: "missing_client_id",
-			});
+			log.set({ validation: { failed: true, reason: "missing_client_id" } });
 			return {
 				error: new Response(
 					JSON.stringify({ status: "error", message: "Missing client ID" }),
@@ -124,9 +121,7 @@ export function validateRequest(
 			};
 		}
 
-		setAttributes({
-			client_id: clientId,
-		});
+		log.set({ clientId });
 
 		const website = await record("getWebsiteByIdV2", () =>
 			getWebsiteByIdV2(clientId)
@@ -141,10 +136,9 @@ export function validateRequest(
 				undefined,
 				clientId
 			);
-			setAttributes({
-				validation_failed: true,
-				validation_reason: "invalid_client_id",
-				website_status: website?.status || "not_found",
+			log.set({
+				validation: { failed: true, reason: "invalid_client_id" },
+				website: { status: website?.status || "not_found" },
 			});
 			return {
 				error: new Response(
@@ -160,10 +154,7 @@ export function validateRequest(
 			};
 		}
 
-		setAttributes({
-			website_domain: website.domain,
-			website_status: website.status,
-		});
+		log.set({ website: { domain: website.domain, status: website.status } });
 
 		if (website.ownerId) {
 			const billing = await checkAutumnUsage(website.ownerId, "events", {
@@ -192,7 +183,6 @@ export function validateRequest(
 		const allowedOrigins = securitySettings?.allowedOrigins;
 		const allowedIps = securitySettings?.allowedIps;
 
-		// Check origin against settings if configured
 		if (origin && allowedOrigins && allowedOrigins.length > 0) {
 			if (
 				!(await record("isValidOriginFromSettings", () =>
@@ -208,11 +198,7 @@ export function validateRequest(
 					undefined,
 					clientId
 				);
-				setAttributes({
-					validation_failed: true,
-					validation_reason: "origin_not_authorized",
-					request_origin: origin,
-				});
+				log.set({ validation: { failed: true, reason: "origin_not_authorized", origin } });
 				return {
 					error: new Response(
 						JSON.stringify({
@@ -241,11 +227,7 @@ export function validateRequest(
 				undefined,
 				clientId
 			);
-			setAttributes({
-				validation_failed: true,
-				validation_reason: "origin_not_authorized",
-				request_origin: origin,
-			});
+			log.set({ validation: { failed: true, reason: "origin_not_authorized", origin } });
 			return {
 				error: new Response(
 					JSON.stringify({
@@ -260,7 +242,6 @@ export function validateRequest(
 			};
 		}
 
-		// Check IP against settings if configured
 		if (
 			ip &&
 			allowedIps &&
@@ -278,11 +259,7 @@ export function validateRequest(
 				undefined,
 				clientId
 			);
-			setAttributes({
-				validation_failed: true,
-				validation_reason: "ip_not_authorized",
-				request_ip: ip,
-			});
+			log.set({ validation: { failed: true, reason: "ip_not_authorized" } });
 			return {
 				error: new Response(
 					JSON.stringify({
@@ -302,12 +279,6 @@ export function validateRequest(
 				request.headers.get("user-agent"),
 				VALIDATION_LIMITS.STRING_MAX_LENGTH
 			) || "";
-
-		setAttributes({
-			validation_success: true,
-			request_has_user_agent: Boolean(userAgent),
-			request_has_ip: Boolean(ip),
-		});
 
 		return {
 			success: true,
@@ -333,6 +304,7 @@ export function checkForBot(
 	userAgent: string
 ): Promise<{ error?: Response } | undefined> {
 	return record("checkForBot", () => {
+		const log = useLogger();
 		const botCheck = detectBot(userAgent, request);
 
 		if (!botCheck.isBot) {
@@ -340,19 +312,12 @@ export function checkForBot(
 		}
 
 		const { action, result } = botCheck;
+		log.set({ bot: { name: botCheck.botName, category: botCheck.category, action } });
 
-		// Handle ALLOW action - let the request through normally
 		if (action === "allow") {
-			setAttributes({
-				bot_detected: true,
-				bot_action: "allow",
-				bot_category: botCheck.category || "unknown",
-				bot_name: botCheck.botName || "unknown",
-			});
-			return; // Process as normal traffic
+			return;
 		}
 
-		// Handle TRACK_ONLY action - log to AI traffic table
 		if (action === "track_only") {
 			const path =
 				body?.path ||
@@ -374,14 +339,6 @@ export function checkForBot(
 				action: "tracked",
 			});
 
-			setAttributes({
-				validation_failed: true,
-				validation_reason: "ai_traffic",
-				bot_action: "track_only",
-				bot_type: result?.category || "unknown",
-				bot_name: botCheck.botName || "unknown",
-			});
-
 			return {
 				error: new Response(JSON.stringify({ status: "ignored" }), {
 					status: 200,
@@ -390,7 +347,6 @@ export function checkForBot(
 			};
 		}
 
-		// Handle BLOCK action - log to blocked traffic and reject
 		logBlockedTraffic(
 			request,
 			body,
@@ -400,15 +356,6 @@ export function checkForBot(
 			botCheck.botName,
 			clientId
 		);
-
-		setAttributes({
-			validation_failed: true,
-			validation_reason: "bot_blocked",
-			bot_action: "block",
-			bot_name: botCheck.botName || "unknown",
-			bot_category: botCheck.category || "Bot Detection",
-			bot_detection_reason: botCheck.reason || "unknown_bot",
-		});
 
 		return {
 			error: new Response(JSON.stringify({ status: "ignored" }), {

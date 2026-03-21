@@ -2,6 +2,8 @@ import { opentelemetry } from "@elysiajs/opentelemetry";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { Elysia, redirect } from "elysia";
+import { initLogger, log } from "evlog";
+import { evlog } from "evlog/elysia";
 import { disconnectProducer } from "./lib/producer";
 import { shutdownTracing } from "./lib/tracing";
 import { expiredRoute } from "./routes/expired";
@@ -22,7 +24,12 @@ const batchSpanProcessor = new BatchSpanProcessor(exporter, {
 	maxQueueSize: 2048,
 });
 
+initLogger({
+	env: { service: "links" },
+});
+
 const app = new Elysia()
+	.use(evlog())
 	.use(
 		opentelemetry({
 			spanProcessor: batchSpanProcessor,
@@ -39,7 +46,7 @@ const app = new Elysia()
 	.use(redirectRoute);
 
 async function gracefulShutdown(signal: string) {
-	console.log(`${signal} received, shutting down gracefully...`);
+	log.info("lifecycle", `${signal} received, shutting down gracefully`);
 	await Promise.all([disconnectProducer(), shutdownTracing()]);
 	process.exit(0);
 }

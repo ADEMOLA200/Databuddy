@@ -1,5 +1,7 @@
 import { Receiver } from "@upstash/qstash";
 import { Elysia } from "elysia";
+import { initLogger } from "evlog";
+import { evlog, useLogger } from "evlog/elysia";
 import { z } from "zod";
 import { type CheckOptions, checkUptime, lookupSchedule } from "./actions";
 import type { JsonParsingConfig } from "./json-parser";
@@ -12,6 +14,9 @@ import {
 	startRequestSpan,
 } from "./lib/tracing";
 
+initLogger({
+	env: { service: "uptime" },
+});
 initTracing();
 
 process.on("unhandledRejection", (reason, _promise) => {
@@ -24,12 +29,12 @@ process.on("uncaughtException", (error) => {
 });
 
 process.on("SIGTERM", async () => {
-	await shutdownTracing().catch(() => {});
+	await shutdownTracing().catch(() => { });
 	process.exit(0);
 });
 
 process.on("SIGINT", async () => {
-	await shutdownTracing().catch(() => {});
+	await shutdownTracing().catch(() => { });
 	process.exit(0);
 });
 
@@ -52,6 +57,7 @@ const app = new Elysia()
 		span: null as ReturnType<typeof startRequestSpan> | null,
 		startTime: 0,
 	})
+	.use(evlog())
 	.onBeforeHandle(function startTrace({ request, path, store }) {
 		const method = request.method;
 		const startTime = Date.now();
@@ -168,12 +174,9 @@ const app = new Elysia()
 					monitorId,
 					url: schedule.data.url,
 				});
-				console.error(
-					"[uptime] Failed to check uptime:",
-					monitorId,
-					schedule.data.url,
-					result.error
-				);
+				useLogger().error(new Error(result.error), {
+					uptime: { monitorId, url: schedule.data.url, step: "check" },
+				});
 				return new Response("Failed to check uptime", { status: 500 });
 			}
 
@@ -185,17 +188,19 @@ const app = new Elysia()
 					monitorId,
 					httpCode: result.data.http_code,
 				});
-				console.error(
-					"[uptime] Failed to send uptime event:",
-					monitorId,
-					error instanceof Error ? error.message : String(error)
+				useLogger().error(
+					error instanceof Error ? error : new Error(String(error)),
+					{ uptime: { monitorId, step: "producer", httpCode: result.data.http_code } }
 				);
 			}
 
 			return new Response("Uptime check complete", { status: 200 });
 		} catch (error) {
 			captureError(error, { type: "unexpected_error" });
-			console.error("[uptime] Unexpected error in POST handler:", error);
+			useLogger().error(
+				error instanceof Error ? error : new Error(String(error)),
+				{ uptime: { step: "post_handler" } }
+			);
 			return new Response("Internal server error", { status: 500 });
 		}
 	});

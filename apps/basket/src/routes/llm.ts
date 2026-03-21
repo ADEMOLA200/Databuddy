@@ -4,6 +4,7 @@ import { checkAutumnUsage } from "@lib/billing";
 import { insertAICallSpans } from "@lib/event-service";
 import { captureError } from "@lib/tracing";
 import { Elysia } from "elysia";
+import { useLogger } from "evlog/elysia";
 import { z } from "zod";
 
 const aiCallSchema = z.object({
@@ -52,10 +53,13 @@ const app = new Elysia().post("/llm", async (context) => {
 		body: unknown;
 		request: Request;
 	};
+	const log = useLogger();
+	log.set({ route: "llm" });
 
 	try {
 		const apiKey = await getApiKeyFromHeader(request.headers);
 		if (apiKey === null) {
+			log.set({ rejected: "missing_api_key" });
 			return new Response(
 				JSON.stringify({
 					status: "error",
@@ -68,6 +72,7 @@ const app = new Elysia().post("/llm", async (context) => {
 			);
 		}
 		if (!hasKeyScope(apiKey, "write:llm")) {
+			log.set({ rejected: "missing_scope" });
 			return new Response(
 				JSON.stringify({
 					status: "error",
@@ -80,9 +85,9 @@ const app = new Elysia().post("/llm", async (context) => {
 			);
 		}
 
-		// owner_id for ClickHouse storage (org or user ID)
 		const ownerId = apiKey.organizationId ?? apiKey.userId;
 		if (!ownerId) {
+			log.set({ rejected: "missing_owner" });
 			return new Response(
 				JSON.stringify({
 					status: "error",
@@ -95,10 +100,13 @@ const app = new Elysia().post("/llm", async (context) => {
 			);
 		}
 
+		log.set({ ownerId, apiKeyId: apiKey.id });
+
 		const billingOwnerId = await resolveApiKeyOwnerId(
 			apiKey.organizationId ?? null
 		);
 		if (!billingOwnerId) {
+			log.set({ rejected: "billing_resolve_failed" });
 			return new Response(
 				JSON.stringify({
 					status: "error",
@@ -115,6 +123,7 @@ const app = new Elysia().post("/llm", async (context) => {
 			api_key_id: apiKey.id,
 		});
 		if ("exceeded" in billing) {
+			log.set({ rejected: "billing_exceeded" });
 			return billing.response;
 		}
 
@@ -123,6 +132,7 @@ const app = new Elysia().post("/llm", async (context) => {
 			.safeParse(body);
 
 		if (!parseResult.success) {
+			log.set({ rejected: "schema" });
 			return new Response(
 				JSON.stringify({
 					status: "error",
@@ -138,6 +148,8 @@ const app = new Elysia().post("/llm", async (context) => {
 		const calls = Array.isArray(parseResult.data)
 			? parseResult.data
 			: [parseResult.data];
+
+		log.set({ count: calls.length });
 
 		const now = Date.now();
 		const spans = calls.map((call) => {
@@ -191,6 +203,7 @@ const app = new Elysia().post("/llm", async (context) => {
 			}
 		);
 	} catch (error) {
+		log.error(error instanceof Error ? error : new Error(String(error)));
 		captureError(error, { message: "Error processing AI call" });
 		return new Response(
 			JSON.stringify({ status: "error", message: "Internal server error" }),

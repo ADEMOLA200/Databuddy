@@ -1,5 +1,5 @@
 import type { RolloutStep } from "@databuddy/shared/flags";
-import { logger } from "@databuddy/shared/logger";
+import { logger } from "../lib/logger";
 import { Client } from "@upstash/qstash";
 
 if (!process.env.UPSTASH_QSTASH_TOKEN) {

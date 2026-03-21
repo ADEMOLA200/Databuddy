@@ -123,20 +123,6 @@ export function setCurrentRequestSpan(span: Span | null): void {
 }
 
 /**
- * Set attributes on active span - replaces @elysiajs/opentelemetry setAttributes
- */
-export function setAttributes(
-	attributes: Record<string, string | number | boolean>
-): void {
-	const span = trace.getActiveSpan() ?? currentRequestSpan;
-	if (span) {
-		for (const [key, value] of Object.entries(attributes)) {
-			span.setAttribute(key, value);
-		}
-	}
-}
-
-/**
  * Start HTTP request span and set it as active
  * Returns both the span and the context with the span set as active
  */

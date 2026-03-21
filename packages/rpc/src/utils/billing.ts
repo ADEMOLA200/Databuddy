@@ -1,6 +1,6 @@
 import { and, db, eq, member } from "@databuddy/db";
 import { cacheable } from "@databuddy/redis";
-import { logger } from "@databuddy/shared/logger";
+import { logger } from "../lib/logger";
 import { Autumn as autumn } from "autumn-js";
 
 export interface BillingOwner {

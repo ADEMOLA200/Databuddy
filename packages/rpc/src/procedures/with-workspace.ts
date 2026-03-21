@@ -11,7 +11,7 @@ import {
 } from "@databuddy/auth";
 import { db, eq, member, websites } from "@databuddy/db";
 import { cacheable } from "@databuddy/redis";
-import { logger } from "@databuddy/shared/logger";
+import { logger } from "../lib/logger";
 import type { PlanId } from "@databuddy/shared/types/features";
 import { z } from "zod";
 import { rpcError } from "../errors";

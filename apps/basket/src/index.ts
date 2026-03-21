@@ -17,32 +17,49 @@ import { paddleWebhook } from "@routes/webhooks/paddle";
 import { stripeWebhook } from "@routes/webhooks/stripe";
 import { closeGeoIPReader } from "@utils/ip-geo";
 import { Elysia } from "elysia";
+import { initLogger, log } from "evlog";
+import { evlog } from "evlog/elysia";
 
+initLogger({
+	env: { service: "basket" },
+});
 initTracing();
 
 process.on("unhandledRejection", (reason, _promise) => {
-	console.error("Unhandled Rejection:", reason);
 	captureError(reason);
+	log.error({
+		process: "unhandledRejection",
+		reason: reason instanceof Error ? reason.message : String(reason),
+	});
 });
 
 process.on("uncaughtException", (error) => {
-	console.error("Uncaught Exception:", error);
 	captureError(error);
+	log.error({
+		process: "uncaughtException",
+		error: error instanceof Error ? error.message : String(error),
+	});
 });
 
 process.on("SIGTERM", async () => {
-	console.log("SIGTERM received, shutting down gracefully...");
+	log.info("lifecycle", "SIGTERM received, shutting down gracefully");
 	await Promise.all([disconnectProducer(), shutdownTracing()]).catch((error) =>
-		console.error("Shutdown error:", error)
+		log.error({
+			lifecycle: "shutdown",
+			error: error instanceof Error ? error.message : String(error),
+		})
 	);
 	closeGeoIPReader();
 	process.exit(0);
 });
 
 process.on("SIGINT", async () => {
-	console.log("SIGINT received, shutting down gracefully...");
+	log.info("lifecycle", "SIGINT received, shutting down gracefully");
 	await Promise.all([disconnectProducer(), shutdownTracing()]).catch((error) =>
-		console.error("Shutdown error:", error)
+		log.error({
+			lifecycle: "shutdown",
+			error: error instanceof Error ? error.message : String(error),
+		})
 	);
 	closeGeoIPReader();
 	process.exit(0);
@@ -54,6 +71,7 @@ const app = new Elysia()
 		activeContext: null as ReturnType<typeof context.active> | null | undefined,
 		startTime: 0,
 	})
+	.use(evlog())
 	.onBeforeHandle(function handleCors({ request, set }) {
 		const origin = request.headers.get("origin");
 		if (origin) {
