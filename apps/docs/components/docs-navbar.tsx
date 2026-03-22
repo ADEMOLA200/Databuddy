@@ -4,8 +4,8 @@ import { CaretDownIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useState } from "react";
+import { Branding } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Logo } from "./logo";
 import { NavLink } from "./nav-link";
 import { navMenu } from "./navbar";
 import { NavbarGithubDesktopLink } from "./navbar-github-desktop-link";
@@ -34,9 +34,12 @@ export const DocsNavbar = ({ stars }: DocsNavbarProps) => {
 			<nav>
 				<div className="mx-auto w-full px-2 md:px-6 lg:px-8">
 					<div className="flex h-16 items-center justify-between">
-						<div className="shrink-0 transition-opacity hover:opacity-90">
-							<Logo />
-						</div>
+						<Link
+							className="flex shrink-0 items-center transition-opacity hover:opacity-90"
+							href="/"
+						>
+							<Branding heightPx={28} priority variant="primary-logo" />
+						</Link>
 
 						<div className="hidden md:block">
 							<ul className="flex items-center gap-1">

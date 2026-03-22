@@ -3,10 +3,10 @@
 import { useFlags } from "@databuddy/sdk/react";
 import { InfoIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
+import { Branding } from "@/components/layout/logo";
 import { useCommandSearchOpenAction } from "@/components/ui/command-search";
 import {
 	Tooltip,
@@ -100,14 +100,7 @@ export function CategorySidebar({
 						className="relative shrink-0 transition-opacity hover:opacity-80"
 						href="/websites"
 					>
-						<Image
-							alt="Databuddy Logo"
-							className="invert dark:invert-0"
-							height={32}
-							priority
-							src="/logo.svg"
-							width={32}
-						/>
+						<Branding heightPx={28} priority variant="logomark" />
 					</Link>
 				</div>
 
