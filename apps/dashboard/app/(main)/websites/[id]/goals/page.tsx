@@ -161,25 +161,27 @@ export default function GoalsPage() {
 					websiteId={websiteId}
 				/>
 
-				{goalsLoading ? (
-					<GoalsListSkeleton />
-				) : (
-					<GoalsList
-						analyticsLoading={analyticsLoading}
-						goalAnalytics={goalAnalytics}
-						goals={goals}
-						isLoading={goalsLoading}
-						onCreateGoal={() => {
-							setEditingGoal(null);
-							setIsDialogOpen(true);
-						}}
-						onDeleteGoal={(goalId) => setDeletingGoalId(goalId)}
-						onEditGoal={(goal) => {
-							setEditingGoal(goal);
-							setIsDialogOpen(true);
-						}}
-					/>
-				)}
+				<div className="min-h-0 flex-1 overflow-y-auto overscroll-none">
+					{goalsLoading ? (
+						<GoalsListSkeleton />
+					) : (
+						<GoalsList
+							analyticsLoading={analyticsLoading}
+							goalAnalytics={goalAnalytics}
+							goals={goals}
+							isLoading={goalsLoading}
+							onCreateGoal={() => {
+								setEditingGoal(null);
+								setIsDialogOpen(true);
+							}}
+							onDeleteGoal={(goalId) => setDeletingGoalId(goalId)}
+							onEditGoal={(goal) => {
+								setEditingGoal(goal);
+								setIsDialogOpen(true);
+							}}
+						/>
+					)}
+				</div>
 
 				{isDialogOpen && (
 					<EditGoalDialog

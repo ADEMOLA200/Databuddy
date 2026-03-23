@@ -104,12 +104,12 @@ export function CategorySidebar({
 					</Link>
 				</div>
 
-				<div className="shrink-0 border-border border-b">
+				<div className="shrink-0">
 					<Tooltip delayDuration={500}>
 						<TooltipTrigger asChild>
 							<button
 								aria-label="Search"
-								className="relative flex h-10 w-full cursor-pointer items-center justify-center hover:bg-sidebar-accent-brighter focus:outline-none"
+								className="relative flex h-10 w-full cursor-pointer items-center justify-center border-border border-b hover:bg-sidebar-accent-brighter focus:outline-none"
 								onClick={() => openCommandSearchAction()}
 								type="button"
 							>

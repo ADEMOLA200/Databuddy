@@ -179,6 +179,7 @@ export default function FunnelsPage() {
 					websiteId={websiteId}
 				/>
 
+				<div className="min-h-0 flex-1 overflow-y-auto overscroll-none">
 				{isLoading ? (
 					<FunnelsListSkeleton />
 				) : (
@@ -222,6 +223,7 @@ export default function FunnelsPage() {
 						}}
 					</FunnelsList>
 				)}
+				</div>
 
 				{editing !== null && (
 					<EditFunnelDialog

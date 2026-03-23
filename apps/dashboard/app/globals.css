@@ -340,7 +340,7 @@
   --destructive-brighter: #E04040;
   --destructive-foreground: #FFFFFF;
 
-  --border: #E4E5EA;
+  --border: #d1d3dc;
   --input: #E4E5EA;
   --ring: #453C7C;
 
@@ -356,7 +356,7 @@
   --sidebar-primary-foreground: #E7E8EB;
   --sidebar-accent: #EDEEF2;
   --sidebar-accent-foreground: #27282D;
-  --sidebar-border: #E4E5EA;
+  --sidebar-border: #d1d3dc;
   --sidebar-ring: #453C7C;
 
   --font-sans:
@@ -368,7 +368,6 @@
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
 
-  /* Font stack for kbd elements with better symbol support */
   --font-kbd:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
@@ -442,7 +441,7 @@
   --destructive-brighter: #F87171;
   --destructive-foreground: #E7E8EB;
 
-  --border: #33333B;
+  --border: #3b3b45;
   --input: #3A3A42;
   --ring: #B74677;
 
@@ -459,7 +458,7 @@
   --sidebar-accent: #2A2A31;
   --sidebar-accent-brighter: #323239;
   --sidebar-accent-foreground: #E7E8EB;
-  --sidebar-border: #33333B;
+  --sidebar-border: #3b3b45;
   --sidebar-ring: #B74677;
 
   --font-sans:

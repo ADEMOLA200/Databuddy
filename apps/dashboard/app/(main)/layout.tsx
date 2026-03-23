@@ -32,7 +32,7 @@ export default async function MainLayout({
 						<Sidebar user={user} />
 						{/* <DevToolsDrawer /> */}
 						<div className="relative h-dvh pl-0 md:pl-76 lg:pl-84">
-							<div className="h-dvh overflow-y-auto overflow-x-hidden pt-12 md:pt-0">
+							<div className="h-dvh overflow-y-auto overflow-x-hidden overscroll-none pt-12 md:pt-0">
 								{children}
 							</div>
 						</div>

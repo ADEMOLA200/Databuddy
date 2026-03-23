@@ -136,9 +136,7 @@ export default function ExportPage() {
 				icon={<DownloadIcon />}
 				title="Data Export"
 			/>
-
-			{/* Content */}
-			<div className="flex min-h-0 flex-1 flex-col">
+			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none">
 				{/* Format selection */}
 				<section className="border-b px-4 py-5 sm:px-6">
 					<div className="mb-3">
