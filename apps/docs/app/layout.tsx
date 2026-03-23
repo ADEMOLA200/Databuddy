@@ -77,6 +77,9 @@ export const metadata: Metadata = {
 	alternates: {
 		canonical: SITE_URL,
 	},
+	appleWebApp: {
+		title: "Databuddy",
+	},
 	pinterest: {
 		richPin: false,
 	},

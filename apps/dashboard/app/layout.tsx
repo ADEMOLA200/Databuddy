@@ -94,11 +94,8 @@ export const metadata: Metadata = {
 	alternates: {
 		canonical: "https://app.databuddy.cc",
 	},
-	icons: {
-		icon: "/favicon.ico",
-		shortcut: "/favicon.ico",
-		apple: "/favicon.ico",
-		other: { rel: "icon", url: "/favicon.ico" },
+	appleWebApp: {
+		title: "Databuddy",
 	},
 };
 
