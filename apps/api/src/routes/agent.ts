@@ -13,6 +13,12 @@ import { useLogger } from "evlog/elysia";
 import type { AgentConfig, AgentType } from "../ai/agents";
 import { createAgentConfig } from "../ai/agents";
 import { trackAgentEvent } from "../lib/databuddy";
+import {
+	formatMemoryForPrompt,
+	getMemoryContext,
+	isMemoryEnabled,
+	storeConversation,
+} from "../lib/supermemory";
 import { captureError, mergeWideEvent } from "../lib/tracing";
 import { validateWebsite } from "../lib/website-utils";
 
@@ -195,14 +201,28 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 						},
 					});
 
-					const config = createAgentConfig(agentType, {
-						userId,
-						websiteId: body.websiteId,
-						websiteDomain: domain,
-						timezone,
-						chatId,
-						requestHeaders: request.headers,
-					});
+					const lastMessage = getLastMessagePreview(body.messages);
+
+					const [config, memoryCtx] = await Promise.all([
+						Promise.resolve(
+							createAgentConfig(agentType, {
+								userId,
+								websiteId: body.websiteId,
+								websiteDomain: domain,
+								timezone,
+								chatId,
+								requestHeaders: request.headers,
+							})
+						),
+						isMemoryEnabled() && lastMessage
+							? getMemoryContext(lastMessage, userId, null)
+							: Promise.resolve(null),
+					]);
+
+					const memoryBlock = memoryCtx ? formatMemoryForPrompt(memoryCtx) : "";
+					if (memoryBlock) {
+						config.system = `${config.system}\n\n${memoryBlock}`;
+					}
 
 					const validation = await safeValidateUIMessages({
 						messages: body.messages as UIMessage[],
@@ -232,6 +252,18 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 					});
 
 					const agent = createToolLoopAgent(config);
+
+					if (isMemoryEnabled() && lastMessage) {
+						storeConversation(
+							[{ role: "user", content: lastMessage }],
+							userId,
+							null,
+							{
+								source: "dashboard",
+								websiteId: body.websiteId,
+							}
+						);
+					}
 
 					const result = await agent.stream({
 						messages: modelMessages,

@@ -1,4 +1,10 @@
 import { ToolLoopAgent } from "ai";
+import {
+	formatMemoryForPrompt,
+	getMemoryContext,
+	isMemoryEnabled,
+	storeConversation,
+} from "../../lib/supermemory";
 import { createMcpAgentConfig } from "../agents/mcp";
 import { models } from "../config/models";
 
@@ -18,16 +24,35 @@ export interface RunMcpAgentOptions {
 export async function runMcpAgent(
 	options: RunMcpAgentOptions
 ): Promise<string> {
-	const config = createMcpAgentConfig(models.analyticsMcp, {
-		requestHeaders: options.requestHeaders,
-		apiKey: options.apiKey,
-		userId: options.userId,
-		timezone: options.timezone,
-	});
+	const apiKeyId =
+		options.apiKey &&
+		typeof options.apiKey === "object" &&
+		"id" in options.apiKey
+			? (options.apiKey as { id: string }).id
+			: null;
+
+	const [config, memoryCtx] = await Promise.all([
+		Promise.resolve(
+			createMcpAgentConfig(models.analyticsMcp, {
+				requestHeaders: options.requestHeaders,
+				apiKey: options.apiKey,
+				userId: options.userId,
+				timezone: options.timezone,
+			})
+		),
+		isMemoryEnabled()
+			? getMemoryContext(options.question, options.userId, apiKeyId)
+			: Promise.resolve(null),
+	]);
+
+	const memoryBlock = memoryCtx ? formatMemoryForPrompt(memoryCtx) : "";
+	const instructions = memoryBlock
+		? `${config.system}\n\n${memoryBlock}`
+		: config.system;
 
 	const agent = new ToolLoopAgent({
 		model: config.model,
-		instructions: config.system,
+		instructions,
 		tools: config.tools,
 		stopWhen: config.stopWhen,
 		temperature: config.temperature,
@@ -54,7 +79,19 @@ export async function runMcpAgent(
 			abortSignal: abortController.signal,
 		});
 
-		return result.text ?? "No response generated.";
+		const answer = result.text ?? "No response generated.";
+
+		storeConversation(
+			[
+				{ role: "user", content: options.question },
+				{ role: "assistant", content: answer },
+			],
+			options.userId,
+			apiKeyId,
+			{ source: "mcp" }
+		);
+
+		return answer;
 	} finally {
 		clearTimeout(timeout);
 	}

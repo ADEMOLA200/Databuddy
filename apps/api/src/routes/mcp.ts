@@ -9,6 +9,7 @@ import {
 	hasKeyScope,
 	isApiKeyPresent,
 } from "../lib/api-key";
+import { isMemoryEnabled } from "../lib/supermemory";
 import { captureError, mergeWideEvent } from "../lib/tracing";
 
 export const mcp = new Elysia({ prefix: "/v1/mcp" })
@@ -84,6 +85,10 @@ export const mcp = new Elysia({ prefix: "/v1/mcp" })
 			{ capabilities: { tools: {} } }
 		);
 
+		const memoryToolIds = isMemoryEnabled()
+			? (["search_memory", "save_memory"] as const)
+			: ([] as const);
+
 		const toolIds = [
 			"ask",
 			"list_websites",
@@ -96,9 +101,13 @@ export const mcp = new Elysia({ prefix: "/v1/mcp" })
 			"get_goal_analytics",
 			"list_links",
 			"search_links",
+			...memoryToolIds,
 		] as const;
 		for (const id of toolIds) {
-			const t = tools[id];
+			const t = (tools as unknown as Record<string, (typeof tools)["ask"]>)[id];
+			if (!t) {
+				continue;
+			}
 			mcpServer.registerTool(
 				id,
 				{

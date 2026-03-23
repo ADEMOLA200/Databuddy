@@ -61,6 +61,7 @@
         "jszip": "^3.10.1",
         "keypal": "^0.1.11",
         "resend": "^4.0.1",
+        "supermemory": "^4.17.0",
         "svix": "^1.84.1",
         "zod": "catalog:",
         "zod-to-json-schema": "^3.25.1",
@@ -3599,6 +3600,8 @@
     "supercluster": ["supercluster@8.0.1", "", { "dependencies": { "kdbush": "^4.0.2" } }, "sha512-IiOea5kJ9iqzD2t7QJq/cREyLHTtSmUT6gQsweojg9WH2sYJqZK9SswTu6jrscO6D1G5v5vYZ9ru/eq85lXeZQ=="],
 
     "superjson": ["superjson@2.2.6", "", { "dependencies": { "copy-anything": "^4" } }, "sha512-H+ue8Zo4vJmV2nRjpx86P35lzwDT3nItnIsocgumgr0hHMQ+ZGq5vrERg9kJBo5AWGmxZDhzDo+WVIJqkB0cGA=="],
+
+    "supermemory": ["supermemory@4.17.0", "", { "bin": { "supermemory": "bin/cli" } }, "sha512-+37Lwl85cEtNxQRqLCg+b8L07KT9s/2Wuc1jzWOd+n+A9SIQpOZRgg8bIVWgsi3vLpnYcjFdu7/6xjTH+PUQsA=="],
 
     "supports-preserve-symlinks-flag": ["supports-preserve-symlinks-flag@1.0.0", "", {}, "sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w=="],
 

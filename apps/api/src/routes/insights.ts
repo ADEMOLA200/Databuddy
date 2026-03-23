@@ -16,6 +16,7 @@ import { Elysia, t } from "elysia";
 import { useLogger } from "evlog/elysia";
 import { z } from "zod";
 import { gateway } from "../ai/config/models";
+import { storeAnalyticsSummary } from "../lib/supermemory";
 import { mergeWideEvent } from "../lib/tracing";
 import { executeQuery } from "../query";
 
@@ -423,6 +424,27 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 					.flat()
 					.sort((a, b) => b.priority - a.priority)
 					.slice(0, 10);
+
+				for (const site of sites.slice(0, MAX_WEBSITES) as Array<{
+					id: string;
+					name: string;
+					domain: string;
+				}>) {
+					const siteInsights = sorted.filter((s) => s.websiteId === site.id);
+					if (siteInsights.length > 0) {
+						const summary = siteInsights
+							.map(
+								(s) =>
+									`[${s.severity}] ${s.title}: ${s.description} Suggestion: ${s.suggestion}`
+							)
+							.join("\n");
+						storeAnalyticsSummary(
+							`Weekly insights for ${site.domain} (${dayjs().format("YYYY-MM-DD")}):\n${summary}`,
+							site.id,
+							{ period: "weekly" }
+						);
+					}
+				}
 
 				const payload: InsightsPayload = {
 					insights: sorted,

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { BrandContextMenu } from "@/components/brand-context-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "./logo";
 import { NavLink } from "./nav-link";
@@ -21,9 +22,11 @@ export const Navbar = ({ stars }: NavbarProps) => {
 			<nav>
 				<div className="mx-auto w-full px-2 md:px-6 lg:px-8">
 					<div className="flex h-16 items-center justify-between">
-						<div className="shrink-0 transition-opacity hover:opacity-90">
-							<Logo />
-						</div>
+						<BrandContextMenu>
+							<div className="shrink-0 transition-opacity hover:opacity-90">
+								<Logo />
+							</div>
+						</BrandContextMenu>
 
 						<div className="hidden md:block">
 							<ul className="flex items-center gap-1">
