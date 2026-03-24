@@ -179,24 +179,3 @@ export function useFunnelAnalyticsByReferrer(
 		enabled: options.enabled && !!websiteId && !!funnelId,
 	});
 }
-
-export function useFunnelAnalyticsByLink(
-	websiteId: string,
-	funnelId: string,
-	linkId: string | null,
-	dateRange: DateRange,
-	options: { enabled: boolean } = { enabled: true }
-) {
-	return useQuery({
-		...orpc.funnels.getAnalyticsByLink.queryOptions({
-			input: {
-				funnelId,
-				websiteId,
-				linkId: linkId ?? "",
-				startDate: dateRange?.start_date,
-				endDate: dateRange?.end_date,
-			},
-		}),
-		enabled: options.enabled && !!websiteId && !!funnelId && !!linkId,
-	});
-}
