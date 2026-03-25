@@ -107,17 +107,11 @@ const rpcHandler = new RPCHandler(appRouter, {
 	],
 });
 
-const HIDDEN_FROM_DOCS = [
-	"revenue",
-	"agent",
-	"chat",
-	"sso",
-	"uptime",
-	"billing",
-] as const;
+/** Routers excluded from generated OpenAPI (still on `appRouter`; internal or not for public REST docs). */
+const HIDDEN_FROM_DOCS = ["revenue", "uptime", "billing"] as const;
 const docsRouter = Object.fromEntries(
 	Object.entries(appRouter).filter(
-		([key]) =>
+		([key]: [string, unknown]) =>
 			!HIDDEN_FROM_DOCS.includes(key as (typeof HIDDEN_FROM_DOCS)[number])
 	)
 ) as Omit<typeof appRouter, (typeof HIDDEN_FROM_DOCS)[number]>;
@@ -148,6 +142,11 @@ const openApiHandler = new OpenAPIHandler(docsRouter, {
 				},
 				tags: [
 					{
+						name: "Alarms",
+						description:
+							"Alert rules and notifications for metrics and conditions across your workspace.",
+					},
+					{
 						name: "Annotations",
 						description:
 							"Timeline annotations for marking events on charts. Create, update, and delete annotations tied to specific time ranges and chart contexts.",
@@ -163,9 +162,9 @@ const openApiHandler = new OpenAPIHandler(docsRouter, {
 							"Autocomplete suggestions for analytics filters: page paths, custom events, browsers, countries, UTM params, and more. Used to power filter dropdowns and search.",
 					},
 					{
-						name: "Export",
+						name: "Feedback",
 						description:
-							"Export analytics data in CSV, JSON, or text format for a date range. Requires read permission on the website.",
+							"Submit and manage product feedback tied to your workspace.",
 					},
 					{
 						name: "Flags",
@@ -183,19 +182,9 @@ const openApiHandler = new OpenAPIHandler(docsRouter, {
 							"Conversion goals and analytics. Define goals (custom events, page views, etc.), track conversions, and retrieve goal analytics.",
 					},
 					{
-						name: "Insights",
-						description:
-							"Smart insights and anomaly detection for analytics data across your workspaces.",
-					},
-					{
 						name: "Links",
 						description:
 							"Short link creation and management. Create, list, update, and delete short links with custom slugs. API keys require read:links or write:links scope.",
-					},
-					{
-						name: "Mini Charts",
-						description:
-							"Pre-aggregated mini chart data for dashboard widgets. Returns compact time-series data for authorized websites.",
 					},
 					{
 						name: "Organizations",
@@ -215,7 +204,7 @@ const openApiHandler = new OpenAPIHandler(docsRouter, {
 					{
 						name: "Websites",
 						description:
-							"Website management: create, list, update, delete websites; transfer between workspaces; configure settings and tracking.",
+							"Website management: create, list, update, delete websites; transfer between workspaces; configure settings, tracking, and data export.",
 					},
 				],
 				security: [{ apiKey: [] }],
