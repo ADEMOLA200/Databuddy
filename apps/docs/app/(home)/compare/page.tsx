@@ -1,12 +1,11 @@
-import { ArrowLeftIcon, CheckIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CompetitorCard } from "@/components/compare/competitor-card";
 import { SciFiButton } from "@/components/landing/scifi-btn";
 import Section from "@/components/landing/section";
 import { Spotlight } from "@/components/landing/spotlight";
-import { SciFiCard } from "@/components/scifi-card";
 import { StructuredData } from "@/components/structured-data";
-import { Badge } from "@/components/ui/badge";
 import { competitors } from "@/lib/comparison-config";
 
 const compareTitle =
@@ -23,126 +22,11 @@ export const metadata: Metadata = {
 		description: compareDescription,
 		url: compareUrl,
 	},
-	alternates: {
-		canonical: compareUrl,
-	},
+	alternates: { canonical: compareUrl },
 };
 
-function CompetitorCard({
-	slug,
-	data,
-}: {
-	slug: string;
-	data: (typeof competitors)[string];
-}) {
-	const { competitor } = data;
-	const featuresWin = data.features.filter(
-		(f) => f.databuddy && !f.competitor
-	).length;
-	const totalFeatures = data.features.length;
-
-	return (
-		<Link className="block" href={`/compare/${slug}`}>
-			<SciFiCard className="h-full rounded border border-border bg-card/50 backdrop-blur-sm transition-all duration-300 hover:border-border/80 hover:bg-card/70 hover:shadow-lg">
-				<div className="flex flex-col p-6">
-					{/* Header */}
-					<div className="mb-4 flex items-start justify-between">
-						<div className="flex-1">
-							<h3 className="mb-2 font-semibold text-foreground text-xl group-hover:text-primary">
-								vs {competitor.name}
-							</h3>
-							<p className="text-muted-foreground text-sm leading-relaxed">
-								{competitor.tagline}
-							</p>
-						</div>
-						<div
-							className="flex h-12 w-12 items-center justify-center rounded-full font-bold text-lg text-white"
-							style={{ backgroundColor: competitor.color }}
-						>
-							{competitor.name.charAt(0)}
-						</div>
-					</div>
-
-					{/* Key Stats */}
-					<div className="mb-4 space-y-3">
-						<div className="flex items-center justify-between">
-							<span className="text-muted-foreground text-sm">
-								Databuddy advantages
-							</span>
-							<Badge
-								className="border-accent bg-accent/50 text-primary"
-								variant="outline"
-							>
-								{featuresWin}/{totalFeatures} features
-							</Badge>
-						</div>
-
-						<div className="flex items-center justify-between">
-							<span className="text-muted-foreground text-sm">
-								Their pricing
-							</span>
-							<span
-								className="font-medium text-sm"
-								style={{ color: competitor.color }}
-							>
-								{competitor.pricing.starting}
-							</span>
-						</div>
-
-						<div className="flex items-center justify-between">
-							<span className="text-muted-foreground text-sm">
-								Databuddy pricing
-							</span>
-							<span className="font-bold text-primary text-sm">Free</span>
-						</div>
-					</div>
-
-					{/* Top Features Preview */}
-					<div className="mb-6">
-						<h4 className="mb-3 font-medium text-foreground text-sm">
-							Key Advantages:
-						</h4>
-						<div className="space-y-2">
-							{data.features
-								.filter((f) => f.databuddy && !f.competitor)
-								.slice(0, 3)
-								.map((feature) => (
-									<div className="flex items-center gap-2" key={feature.name}>
-										<CheckIcon
-											className="size-4 shrink-0 text-primary"
-											weight="fill"
-										/>
-										<span className="text-muted-foreground text-xs leading-relaxed">
-											{feature.name}
-										</span>
-									</div>
-								))}
-							{featuresWin > 3 && (
-								<div className="flex items-center gap-2">
-									<span className="text-primary text-xs">
-										+{featuresWin - 3} more advantages
-									</span>
-								</div>
-							)}
-						</div>
-					</div>
-
-					{/* CTA */}
-					<div className="mt-auto">
-						<div className="rounded border border-border/50 bg-muted/20 p-3 text-center">
-							<span className="font-medium text-foreground text-sm group-hover:text-primary">
-								View Full Comparison →
-							</span>
-						</div>
-					</div>
-				</div>
-			</SciFiCard>
-		</Link>
-	);
-}
-
 export default function ComparePage() {
-	const competitorEntries = Object.entries(competitors);
+	const entries = Object.entries(competitors);
 
 	return (
 		<div className="overflow-hidden">
@@ -155,109 +39,81 @@ export default function ComparePage() {
 			/>
 			<Spotlight transform="translateX(-60%) translateY(-50%)" />
 
-			{/* Navigation */}
 			<div className="container mx-auto px-4 pt-8">
-				<Link
-					className="group relative inline-flex items-center gap-2 overflow-hidden rounded border border-border bg-foreground/5 px-4 py-2 font-medium text-foreground text-sm backdrop-blur-sm transition-all hover:bg-foreground/10 active:scale-[0.98]"
-					href="/"
-				>
-					<ArrowLeftIcon
-						className="size-4 transition-transform group-hover:-translate-x-0.5"
-						weight="fill"
-					/>
-					<span>Back to Home</span>
-				</Link>
+				<div className="flex items-center gap-2 text-muted-foreground text-sm">
+					<Link
+						className="transition-colors hover:text-foreground"
+						href="/"
+					>
+						Home
+					</Link>
+					<span>/</span>
+					<span className="text-foreground">Compare</span>
+				</div>
 			</div>
 
-			{/* Hero Section */}
 			<Section className="overflow-hidden" customPaddings id="compare-hero">
-				<section className="relative w-full pt-16 pb-16 sm:pt-20 sm:pb-20 lg:pt-24 lg:pb-24">
-					<div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+				<section className="relative w-full pt-12 pb-12 sm:pt-16 sm:pb-16 lg:pt-20 lg:pb-20">
+					<div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8">
 						<div className="text-center">
-							<h1 className="mb-4 font-semibold text-3xl leading-tight tracking-tight sm:text-5xl md:text-6xl lg:text-7xl xl:text-[72px]">
-								<span className="block">
-									Compare{" "}
-									<span className="text-muted-foreground">analytics</span>
-								</span>
-								<span className="block">
-									<span className="text-muted-foreground">platforms</span>
+							<h1 className="mb-4 text-balance font-semibold text-3xl leading-tight tracking-tight sm:text-4xl md:text-5xl lg:text-6xl">
+								Compare{" "}
+								<span className="text-muted-foreground">
+									analytics platforms
 								</span>
 							</h1>
-							<p className="mx-auto mb-8 max-w-3xl text-balance font-medium text-muted-foreground text-sm leading-relaxed tracking-tight sm:text-base lg:text-lg">
+							<p className="mx-auto max-w-2xl text-balance text-muted-foreground text-sm leading-relaxed sm:text-base">
 								See how Databuddy stacks up against other analytics platforms.
-								Discover why developers choose privacy-first analytics with
-								better performance.
+								Privacy-first, AI-powered, and free to start.
 							</p>
 						</div>
 					</div>
 				</section>
 			</Section>
 
-			{/* Competitors Grid Section */}
 			<Section
 				className="border-border border-t border-b bg-background/50"
 				id="competitors-grid"
 			>
-				<div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-					<div className="mb-12 text-center">
-						<h2 className="mb-4 font-semibold text-2xl sm:text-3xl lg:text-4xl">
-							Choose Your{" "}
-							<span className="text-muted-foreground">Comparison</span>
-						</h2>
-						<p className="mx-auto max-w-2xl text-muted-foreground text-sm sm:text-base lg:text-lg">
-							Click any comparison below to see detailed feature breakdowns and
-							understand why Databuddy is the superior choice for privacy-first
-							analytics.
-						</p>
-					</div>
-
-					{/* Competitors Grid */}
-					<div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-						{competitorEntries.map(([slug, data]) => (
+				<div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8">
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+						{entries.map(([slug, data]) => (
 							<CompetitorCard data={data} key={slug} slug={slug} />
 						))}
 					</div>
 
-					{/* Bottom CTA */}
-					<div className="mt-16 text-center">
-						<div className="mx-auto max-w-2xl rounded border border-border bg-card/30 p-8 backdrop-blur-sm">
-							<h3 className="mb-4 font-bold text-foreground text-xl">
-								Don't see your platform?
-							</h3>
-							<p className="mb-6 text-muted-foreground">
-								We're constantly adding new comparisons. Try Databuddy today and
-								see the difference privacy-first analytics makes.
-							</p>
-							<div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-								<SciFiButton asChild>
-									<Link
-										href="https://app.databuddy.cc/login"
-										rel="noopener noreferrer"
-										target="_blank"
-									>
-										START FREE TRIAL
-									</Link>
-								</SciFiButton>
+					<div className="mt-12 rounded border border-border bg-card/30 p-6 text-center backdrop-blur-sm sm:p-8">
+						<h3 className="mb-2 font-semibold text-foreground text-lg">
+							Don't see your platform?
+						</h3>
+						<p className="mb-5 text-pretty text-muted-foreground text-sm">
+							We're adding new comparisons regularly. Try Databuddy today and
+							see the difference.
+						</p>
+						<div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+							<SciFiButton asChild>
 								<Link
-									className="group relative inline-flex items-center justify-center gap-2 overflow-hidden rounded border border-border bg-foreground/5 px-6 py-3 font-medium text-foreground backdrop-blur-sm transition-all hover:bg-foreground/10 active:scale-[0.98]"
-									href="/demo"
+									href="https://app.databuddy.cc/login"
+									rel="noopener noreferrer"
+									target="_blank"
 								>
-									View Live Demo
-									<ArrowLeftIcon
-										className="size-4 rotate-180 transition-transform group-hover:translate-x-1"
-										weight="fill"
-									/>
+									Start Free — No Credit Card
 								</Link>
-							</div>
+							</SciFiButton>
+							<Link
+								className="group inline-flex items-center justify-center gap-2 rounded border border-border bg-foreground/5 px-5 py-2 font-medium text-foreground text-sm backdrop-blur-sm transition-colors hover:bg-foreground/10 active:scale-[0.98]"
+								href="/demo"
+							>
+								View Live Demo
+								<ArrowRightIcon
+									className="size-3.5 transition-transform group-hover:translate-x-0.5"
+									weight="fill"
+								/>
+							</Link>
 						</div>
 					</div>
 				</div>
 			</Section>
-
-			{/* Gradient Divider */}
-			<div className="w-full">
-				<div className="mx-auto h-px max-w-6xl bg-linear-to-r from-transparent via-border/30 to-transparent" />
-			</div>
 		</div>
 	);
 }
