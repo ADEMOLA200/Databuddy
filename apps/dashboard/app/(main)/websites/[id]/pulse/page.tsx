@@ -35,9 +35,9 @@ import { useBatchDynamicQuery } from "@/hooks/use-dynamic-query";
 import { useWebsite } from "@/hooks/use-websites";
 import { orpc } from "@/lib/orpc";
 import { fromNow, localDayjs } from "@/lib/time";
+import { UptimeHeatmap } from "@/lib/uptime/uptime-heatmap";
 import { WebsitePageHeader } from "../_components/website-page-header";
 import { RecentActivity } from "./_components/recent-activity";
-import { UptimeHeatmap } from "./_components/uptime-heatmap";
 
 const granularityLabels: Record<string, string> = {
 	minute: "Every minute",

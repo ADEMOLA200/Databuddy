@@ -3,6 +3,7 @@ import {
 	account,
 	alarmDestinations,
 	alarms,
+	analyticsInsights,
 	apikey,
 	flags,
 	flagsToTargetGroups,
@@ -51,6 +52,7 @@ export const organizationRelations = relations(organization, ({ many }) => ({
 	}),
 	teams: many(team),
 	alarms: many(alarms),
+	analyticsInsights: many(analyticsInsights),
 }));
 
 export const accountRelations = relations(account, ({ one }) => ({
@@ -114,7 +116,22 @@ export const websitesRelations = relations(websites, ({ one, many }) => ({
 	}),
 	funnelDefinitions: many(funnelDefinitions),
 	alarms: many(alarms),
+	analyticsInsights: many(analyticsInsights),
 }));
+
+export const analyticsInsightsRelations = relations(
+	analyticsInsights,
+	({ one }) => ({
+		organization: one(organization, {
+			fields: [analyticsInsights.organizationId],
+			references: [organization.id],
+		}),
+		website: one(websites, {
+			fields: [analyticsInsights.websiteId],
+			references: [websites.id],
+		}),
+	})
+);
 
 export const funnelDefinitionsRelations = relations(
 	funnelDefinitions,

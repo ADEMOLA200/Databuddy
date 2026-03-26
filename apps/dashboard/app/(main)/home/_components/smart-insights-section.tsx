@@ -303,7 +303,9 @@ function ErrorState({ onRetryAction }: { onRetryAction?: () => void }) {
 interface InsightsSectionProps {
 	insights: Insight[];
 	isLoading?: boolean;
+	showAnalyzing?: boolean;
 	isFetching?: boolean;
+	isFetchingFresh?: boolean;
 	isError?: boolean;
 	onRefreshAction?: () => void;
 }
@@ -311,7 +313,9 @@ interface InsightsSectionProps {
 export function SmartInsightsSection({
 	insights,
 	isLoading,
+	showAnalyzing,
 	isFetching,
+	isFetchingFresh,
 	isError,
 	onRefreshAction,
 }: InsightsSectionProps) {
@@ -329,19 +333,59 @@ export function SmartInsightsSection({
 		);
 	}
 
-	const showInsights = !isError && insights.length > 0;
-	const showEmpty = !isError && insights.length === 0;
+	if (isError) {
+		return (
+			<div className="rounded border bg-card">
+				<div className="flex items-center justify-between border-b px-4 py-3">
+					<div className="flex items-center gap-2">
+						<SparkleIcon className="size-4 text-primary" weight="duotone" />
+						<h3 className="font-semibold text-foreground text-sm">
+							Actionable Insights
+						</h3>
+					</div>
+				</div>
+				<ErrorState onRetryAction={onRefreshAction} />
+			</div>
+		);
+	}
 
-	return (
-		<div className="rounded border bg-card">
-			<div className="flex items-center justify-between border-b px-4 py-3">
-				<div className="flex items-center gap-2">
+	if (showAnalyzing) {
+		return (
+			<div className="rounded border bg-card">
+				<div className="flex items-center gap-2 border-b px-4 py-3">
 					<SparkleIcon className="size-4 text-primary" weight="duotone" />
 					<h3 className="font-semibold text-foreground text-sm">
 						Actionable Insights
 					</h3>
 				</div>
-				<div className="flex items-center gap-2">
+				<AnalyzingState />
+			</div>
+		);
+	}
+
+	const showInsights = insights.length > 0;
+	const showEmpty = insights.length === 0;
+
+	return (
+		<div className="rounded border bg-card">
+			<div className="flex items-center justify-between border-b px-4 py-3">
+				<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+					<div className="flex items-center gap-2">
+						<SparkleIcon
+							className="size-4 shrink-0 text-primary"
+							weight="duotone"
+						/>
+						<h3 className="font-semibold text-foreground text-sm">
+							Actionable Insights
+						</h3>
+					</div>
+					{isFetchingFresh && (
+						<p className="text-muted-foreground text-xs">
+							Updating with latest analysis…
+						</p>
+					)}
+				</div>
+				<div className="flex shrink-0 items-center gap-2">
 					{showInsights && (
 						<span className="text-muted-foreground text-xs">
 							{insights.length} {insights.length === 1 ? "insight" : "insights"}
@@ -362,10 +406,9 @@ export function SmartInsightsSection({
 					)}
 				</div>
 			</div>
-			{isError && <ErrorState onRetryAction={onRefreshAction} />}
 			{showEmpty && <EmptyState />}
 			{showInsights && (
-				<div className="max-h-[280px] divide-y overflow-y-auto">
+				<div className="max-h-[min(400px,60dvh)] divide-y overflow-y-auto">
 					{insights.map((insight) => (
 						<InsightRow insight={insight} key={insight.id} />
 					))}

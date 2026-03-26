@@ -1,6 +1,7 @@
 import { isNotNull } from "drizzle-orm";
 import {
 	boolean,
+	doublePrecision,
 	foreignKey,
 	index,
 	integer,
@@ -760,6 +761,56 @@ export const annotations = pgTable(
 	]
 );
 
+export const analyticsInsights = pgTable(
+	"analytics_insights",
+	{
+		id: text().primaryKey().notNull(),
+		organizationId: text("organization_id").notNull(),
+		websiteId: text("website_id").notNull(),
+		runId: text("run_id").notNull(),
+		title: text().notNull(),
+		description: text().notNull(),
+		suggestion: text().notNull(),
+		severity: text("severity").notNull(),
+		sentiment: text("sentiment").notNull(),
+		type: text("type").notNull(),
+		priority: integer("priority").notNull(),
+		changePercent: doublePrecision("change_percent"),
+		timezone: text("timezone").notNull().default("UTC"),
+		currentPeriodFrom: text("current_period_from").notNull(),
+		currentPeriodTo: text("current_period_to").notNull(),
+		previousPeriodFrom: text("previous_period_from").notNull(),
+		previousPeriodTo: text("previous_period_to").notNull(),
+		createdAt: timestamp("created_at", { precision: 3 }).defaultNow().notNull(),
+	},
+	(table) => [
+		index("idx_analytics_insights_org_created").using(
+			"btree",
+			table.organizationId.asc().nullsLast().op("text_ops"),
+			table.createdAt.desc().nullsLast().op("timestamp_ops")
+		),
+		index("idx_analytics_insights_website_created").using(
+			"btree",
+			table.websiteId.asc().nullsLast().op("text_ops"),
+			table.createdAt.desc().nullsLast().op("timestamp_ops")
+		),
+		index("idx_analytics_insights_run").using(
+			"btree",
+			table.runId.asc().nullsLast().op("text_ops")
+		),
+		foreignKey({
+			columns: [table.organizationId],
+			foreignColumns: [organization.id],
+			name: "analytics_insights_organization_id_fkey",
+		}).onDelete("cascade"),
+		foreignKey({
+			columns: [table.websiteId],
+			foreignColumns: [websites.id],
+			name: "analytics_insights_website_id_fkey",
+		}).onDelete("cascade"),
+	]
+);
+
 export const targetGroups = pgTable(
 	"target_groups",
 	{
@@ -1191,6 +1242,8 @@ export type Flags = typeof flags.$inferSelect;
 export type FlagsInsert = typeof flags.$inferInsert;
 export type Annotations = typeof annotations.$inferSelect;
 export type AnnotationsInsert = typeof annotations.$inferInsert;
+export type AnalyticsInsight = typeof analyticsInsights.$inferSelect;
+export type AnalyticsInsightInsert = typeof analyticsInsights.$inferInsert;
 export type TargetGroups = typeof targetGroups.$inferSelect;
 export type TargetGroupsInsert = typeof targetGroups.$inferInsert;
 export type Feedback = typeof feedback.$inferSelect;

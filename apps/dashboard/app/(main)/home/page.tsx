@@ -83,7 +83,9 @@ export default function HomePage() {
 	const {
 		insights,
 		isLoading: isInsightsLoading,
+		showAnalyzing: isInsightsShowAnalyzing,
 		isFetching: isInsightsFetching,
+		isFetchingFresh: isInsightsFetchingFresh,
 		isError: isInsightsError,
 		refetch: refetchInsights,
 	} = useSmartInsights();
@@ -149,7 +151,12 @@ export default function HomePage() {
 			/>
 
 			<div
-				aria-busy={isFetching || isPulseFetching || isInsightsFetching}
+				aria-busy={
+					isFetching ||
+					isPulseFetching ||
+					isInsightsFetching ||
+					isInsightsFetchingFresh
+				}
 				className="flex-1 space-y-6 overflow-y-auto p-3 sm:p-4 lg:p-6"
 			>
 				{/* Summary Stats */}
@@ -170,8 +177,10 @@ export default function HomePage() {
 						insights={insights}
 						isError={isInsightsError}
 						isFetching={isInsightsFetching}
-						isLoading={isLoading || isInsightsLoading}
+						isFetchingFresh={isInsightsFetchingFresh}
+						isLoading={isInsightsLoading}
 						onRefreshAction={refetchInsights}
+						showAnalyzing={isInsightsShowAnalyzing}
 					/>
 					<MonitorsSection
 						activeMonitors={activeMonitors}

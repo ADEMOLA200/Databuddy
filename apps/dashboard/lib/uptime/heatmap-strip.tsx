@@ -1,0 +1,73 @@
+"use client";
+
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { getUptimeHeatmapCellClass } from "./heatmap-cell-class";
+import {
+	UptimeHeatmapDayTooltipBody,
+	uptimeHeatmapTooltipContentClassName,
+} from "./heatmap-day-tooltip";
+import type { UptimeHeatmapDay } from "./heatmap-days";
+
+export interface UptimeHeatmapStripProps {
+	days: UptimeHeatmapDay[];
+	interactive: boolean;
+	isActive: boolean;
+	stripClassName: string;
+	emptyLabel: string;
+	getDateLabel: (date: Date) => string;
+	tooltipHasData?: (day: UptimeHeatmapDay) => boolean;
+}
+
+export function UptimeHeatmapStrip({
+	days,
+	interactive,
+	isActive,
+	stripClassName,
+	emptyLabel,
+	getDateLabel,
+	tooltipHasData,
+}: UptimeHeatmapStripProps) {
+	return (
+		<div className={stripClassName}>
+			{days.map((day) => {
+				const showDataInTooltip = tooltipHasData
+					? tooltipHasData(day)
+					: day.hasData;
+
+				return (
+					<Tooltip key={day.dateStr}>
+						<TooltipTrigger asChild>
+							<div
+								className={cn(
+									"h-full flex-1 rounded-sm transition-colors",
+									getUptimeHeatmapCellClass({
+										uptimePercent: day.uptime,
+										hasData: day.hasData,
+										isActive,
+										interactive,
+									})
+								)}
+							/>
+						</TooltipTrigger>
+						<TooltipContent
+							className={cn(uptimeHeatmapTooltipContentClassName)}
+							sideOffset={6}
+						>
+							<UptimeHeatmapDayTooltipBody
+								dateLabel={getDateLabel(day.date)}
+								emptyLabel={emptyLabel}
+								hasData={showDataInTooltip}
+								uptimePercent={day.uptime}
+							/>
+						</TooltipContent>
+					</Tooltip>
+				);
+			})}
+		</div>
+	);
+}

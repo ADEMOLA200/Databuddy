@@ -1,8 +1,10 @@
 import { auth } from "@databuddy/auth";
 import {
+	analyticsInsights,
 	and,
 	annotations,
 	db,
+	desc,
 	eq,
 	gte,
 	isNull,
@@ -102,6 +104,25 @@ interface PeriodData {
 	topPages: Record<string, unknown>[];
 	errorSummary: Record<string, unknown>[];
 	topReferrers: Record<string, unknown>[];
+}
+
+interface WeekOverWeekPeriod {
+	current: { from: string; to: string };
+	previous: { from: string; to: string };
+}
+
+function getWeekOverWeekPeriod(): WeekOverWeekPeriod {
+	const now = dayjs();
+	return {
+		current: {
+			from: now.subtract(7, "day").format("YYYY-MM-DD"),
+			to: now.format("YYYY-MM-DD"),
+		},
+		previous: {
+			from: now.subtract(14, "day").format("YYYY-MM-DD"),
+			to: now.subtract(7, "day").format("YYYY-MM-DD"),
+		},
+	};
 }
 
 async function fetchPeriodData(
@@ -224,17 +245,11 @@ async function analyzeWebsite(
 	userId: string,
 	websiteId: string,
 	domain: string,
-	timezone: string
+	timezone: string,
+	period: WeekOverWeekPeriod
 ): Promise<ParsedInsight[]> {
-	const now = dayjs();
-	const currentRange = {
-		from: now.subtract(7, "day").format("YYYY-MM-DD"),
-		to: now.format("YYYY-MM-DD"),
-	};
-	const previousRange = {
-		from: now.subtract(14, "day").format("YYYY-MM-DD"),
-		to: now.subtract(7, "day").format("YYYY-MM-DD"),
-	};
+	const currentRange = period.current;
+	const previousRange = period.previous;
 
 	const [current, previous, annotationContext] = await Promise.all([
 		fetchPeriodData(
@@ -354,6 +369,120 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 			};
 		}
 	})
+	.get(
+		"/history",
+		async ({ query, user, set }) => {
+			const userId = user?.id;
+			if (!userId) {
+				return { success: false, error: "User ID required", insights: [] };
+			}
+
+			const { organizationId, websiteId: websiteIdFilter } = query;
+			const limitParsed = Number.parseInt(query.limit ?? "50", 10);
+			const limit = Number.isFinite(limitParsed)
+				? Math.min(Math.max(limitParsed, 1), 100)
+				: 50;
+			const offsetParsed = Number.parseInt(query.offset ?? "0", 10);
+			const offset = Number.isFinite(offsetParsed)
+				? Math.max(offsetParsed, 0)
+				: 0;
+
+			mergeWideEvent({ insights_history_org_id: organizationId });
+
+			const memberships = await db.query.member.findMany({
+				where: eq(member.userId, userId),
+				columns: { organizationId: true },
+			});
+
+			const orgIds = new Set(memberships.map((m) => m.organizationId));
+			if (!orgIds.has(organizationId)) {
+				mergeWideEvent({ insights_history_access: "denied" });
+				set.status = 403;
+				return {
+					success: false,
+					error: "Access denied to this organization",
+					insights: [],
+				};
+			}
+
+			const whereClause = websiteIdFilter
+				? and(
+						eq(analyticsInsights.organizationId, organizationId),
+						eq(analyticsInsights.websiteId, websiteIdFilter),
+						isNull(websites.deletedAt)
+					)
+				: and(
+						eq(analyticsInsights.organizationId, organizationId),
+						isNull(websites.deletedAt)
+					);
+
+			const rows = await db
+				.select({
+					id: analyticsInsights.id,
+					runId: analyticsInsights.runId,
+					websiteId: analyticsInsights.websiteId,
+					websiteName: websites.name,
+					websiteDomain: websites.domain,
+					title: analyticsInsights.title,
+					description: analyticsInsights.description,
+					suggestion: analyticsInsights.suggestion,
+					severity: analyticsInsights.severity,
+					sentiment: analyticsInsights.sentiment,
+					type: analyticsInsights.type,
+					priority: analyticsInsights.priority,
+					changePercent: analyticsInsights.changePercent,
+					createdAt: analyticsInsights.createdAt,
+					currentPeriodFrom: analyticsInsights.currentPeriodFrom,
+					currentPeriodTo: analyticsInsights.currentPeriodTo,
+					previousPeriodFrom: analyticsInsights.previousPeriodFrom,
+					previousPeriodTo: analyticsInsights.previousPeriodTo,
+					timezone: analyticsInsights.timezone,
+				})
+				.from(analyticsInsights)
+				.innerJoin(websites, eq(analyticsInsights.websiteId, websites.id))
+				.where(whereClause)
+				.orderBy(desc(analyticsInsights.createdAt))
+				.limit(limit)
+				.offset(offset);
+
+			const insights = rows.map((r) => ({
+				id: r.id,
+				runId: r.runId,
+				websiteId: r.websiteId,
+				websiteName: r.websiteName,
+				websiteDomain: r.websiteDomain,
+				link: `/websites/${r.websiteId}`,
+				title: r.title,
+				description: r.description,
+				suggestion: r.suggestion,
+				severity: r.severity,
+				sentiment: r.sentiment,
+				type: r.type,
+				priority: r.priority,
+				changePercent: r.changePercent ?? undefined,
+				createdAt: r.createdAt.toISOString(),
+				currentPeriodFrom: r.currentPeriodFrom,
+				currentPeriodTo: r.currentPeriodTo,
+				previousPeriodFrom: r.previousPeriodFrom,
+				previousPeriodTo: r.previousPeriodTo,
+				timezone: r.timezone,
+			}));
+
+			return {
+				success: true,
+				insights,
+				hasMore: rows.length === limit,
+			};
+		},
+		{
+			query: t.Object({
+				organizationId: t.String(),
+				limit: t.Optional(t.String()),
+				offset: t.Optional(t.String()),
+				websiteId: t.Optional(t.String()),
+			}),
+		}
+	)
 	.post(
 		"/ai",
 		async ({ body, user }) => {
@@ -413,15 +542,17 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 			}
 
 			try {
+				const period = getWeekOverWeekPeriod();
 				const groups = await processInBatches(
 					sites.slice(0, MAX_WEBSITES),
-					async (site) => {
+					async (site: { id: string; name: string | null; domain: string }) => {
 						const results = await analyzeWebsite(
 							organizationId,
 							userId,
 							site.id,
 							site.domain,
-							timezone
+							timezone,
+							period
 						);
 						return results.map(
 							(insight, i): WebsiteInsight => ({
@@ -442,12 +573,51 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 					.sort((a, b) => b.priority - a.priority)
 					.slice(0, 10);
 
+				const runId = crypto.randomUUID();
+				let finalInsights: WebsiteInsight[] = sorted;
+				if (sorted.length > 0) {
+					const rows = sorted.map((insight) => ({
+						id: crypto.randomUUID(),
+						organizationId,
+						websiteId: insight.websiteId,
+						runId,
+						title: insight.title,
+						description: insight.description,
+						suggestion: insight.suggestion,
+						severity: insight.severity,
+						sentiment: insight.sentiment,
+						type: insight.type,
+						priority: insight.priority,
+						changePercent: insight.changePercent ?? null,
+						timezone,
+						currentPeriodFrom: period.current.from,
+						currentPeriodTo: period.current.to,
+						previousPeriodFrom: period.previous.from,
+						previousPeriodTo: period.previous.to,
+					}));
+
+					try {
+						await db.insert(analyticsInsights).values(rows);
+					} catch (error) {
+						useLogger().warn("Failed to persist analytics insights", {
+							insights: { organizationId, error },
+						});
+					}
+
+					finalInsights = sorted.map((insight, i) => {
+						const row = rows[i];
+						return row ? { ...insight, id: row.id } : insight;
+					});
+				}
+
 				for (const site of sites.slice(0, MAX_WEBSITES) as Array<{
 					id: string;
 					name: string;
 					domain: string;
 				}>) {
-					const siteInsights = sorted.filter((s) => s.websiteId === site.id);
+					const siteInsights = finalInsights.filter(
+						(s) => s.websiteId === site.id
+					);
 					if (siteInsights.length > 0) {
 						const summary = siteInsights
 							.map(
@@ -464,24 +634,24 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 				}
 
 				const payload: InsightsPayload = {
-					insights: sorted,
+					insights: finalInsights,
 					source: "ai",
 				};
 
-				if (redis && sorted.length > 0) {
+				if (redis && finalInsights.length > 0) {
 					redis
 						.setex(cacheKey, CACHE_TTL, JSON.stringify(payload))
 						.catch(() => {});
 				}
 
-				if (redis && sorted.length === 0) {
+				if (redis && finalInsights.length === 0) {
 					redis
 						.setex(cacheKey, CACHE_TTL / 3, JSON.stringify(payload))
 						.catch(() => {});
 				}
 
 				mergeWideEvent({
-					insights_returned: sorted.length,
+					insights_returned: finalInsights.length,
 					insights_source: "ai",
 				});
 				return { success: true, ...payload };

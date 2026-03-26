@@ -37,8 +37,8 @@ import { useDateFilters } from "@/hooks/use-date-filters";
 import { useBatchDynamicQuery } from "@/hooks/use-dynamic-query";
 import { orpc } from "@/lib/orpc";
 import { fromNow, localDayjs } from "@/lib/time";
+import { UptimeHeatmap } from "@/lib/uptime/uptime-heatmap";
 import { RecentActivity } from "../../websites/[id]/pulse/_components/recent-activity";
-import { UptimeHeatmap } from "../../websites/[id]/pulse/_components/uptime-heatmap";
 
 const granularityLabels: Record<string, string> = {
 	minute: "Every minute",

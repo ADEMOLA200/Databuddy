@@ -6,13 +6,11 @@ import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useBatchDynamicQuery } from "@/hooks/use-dynamic-query";
 import dayjs from "@/lib/dayjs";
+import { buildUptimeHeatmapDays } from "@/lib/uptime/heatmap-days";
+import { UptimeHeatmapStrip } from "@/lib/uptime/heatmap-strip";
+import { formatDateOnly } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 interface MonitorsSectionProps {
@@ -30,84 +28,25 @@ interface MonitorsSectionProps {
 	onCreateMonitorAction?: () => void;
 }
 
-function UptimeHeatmap({
+function HomeMonitorHeatmap({
 	data,
 	isActive,
 }: {
 	data: Array<{ date: string; uptime_percentage?: number }>;
 	isActive: boolean;
 }) {
-	const days = 30;
-
-	const heatmapData = useMemo(() => {
-		const result: Array<{
-			date: Date;
-			dateStr: string;
-			hasData: boolean;
-			uptime: number;
-		}> = [];
-		const today = dayjs().endOf("day");
-
-		for (let i = days - 1; i >= 0; i--) {
-			const date = today.subtract(i, "day");
-			const dateStr = date.format("YYYY-MM-DD");
-
-			const dayData = data.find(
-				(d) => dayjs(d.date).format("YYYY-MM-DD") === dateStr
-			);
-
-			result.push({
-				date: date.toDate(),
-				dateStr,
-				hasData: !!dayData,
-				uptime: dayData?.uptime_percentage ?? 0,
-			});
-		}
-		return result;
-	}, [data, days]);
+	const heatmapData = useMemo(() => buildUptimeHeatmapDays(data, 30), [data]);
 
 	return (
-		<div className="mt-1.5 flex h-5 w-full items-end gap-[2px]">
-			{heatmapData.map((day) => {
-				let colorClass = "bg-muted";
-				if (day.hasData && isActive) {
-					if (day.uptime >= 100) {
-						colorClass = "bg-emerald-500";
-					} else if (day.uptime >= 95) {
-						colorClass = "bg-amber-400";
-					} else if (day.uptime >= 90) {
-						colorClass = "bg-amber-500";
-					} else {
-						colorClass = "bg-red-500";
-					}
-				}
-
-				return (
-					<Tooltip key={day.dateStr}>
-						<TooltipTrigger asChild>
-							<div
-								className={cn(
-									"h-full flex-1 rounded-sm transition-colors",
-									colorClass
-								)}
-							/>
-						</TooltipTrigger>
-						<TooltipContent className="text-xs">
-							<div className="space-y-1">
-								<p className="font-semibold">
-									{dayjs(day.date).format("MMM D, YYYY")}
-								</p>
-								{day.hasData && isActive ? (
-									<p>Uptime: {day.uptime.toFixed(2)}%</p>
-								) : (
-									<p className="text-muted-foreground">No data</p>
-								)}
-							</div>
-						</TooltipContent>
-					</Tooltip>
-				);
-			})}
-		</div>
+		<UptimeHeatmapStrip
+			days={heatmapData}
+			emptyLabel="No data"
+			getDateLabel={(d) => formatDateOnly(d)}
+			interactive={false}
+			isActive={isActive}
+			stripClassName="mt-1.5 flex h-5 w-full items-end gap-[2px]"
+			tooltipHasData={(day) => day.hasData && isActive}
+		/>
 	);
 }
 
@@ -198,7 +137,7 @@ function MonitorRow({
 			{isLoadingHeatmap ? (
 				<Skeleton className="mt-1.5 h-5 w-full rounded" />
 			) : (
-				<UptimeHeatmap data={heatmapData} isActive={isActive} />
+				<HomeMonitorHeatmap data={heatmapData} isActive={isActive} />
 			)}
 		</Link>
 	);

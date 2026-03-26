@@ -6,12 +6,9 @@ import {
 	XCircleIcon,
 } from "@phosphor-icons/react";
 import { useMemo } from "react";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { formatDateOnly, fromNow, localDayjs } from "@/lib/time";
+import { buildUptimeHeatmapDays } from "@/lib/uptime/heatmap-days";
+import { UptimeHeatmapStrip } from "@/lib/uptime/heatmap-strip";
+import { formatDateOnly, fromNow } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 interface DailyData {
@@ -29,32 +26,6 @@ interface MonitorRowProps {
 }
 
 const DAYS = 90;
-
-interface HeatmapDay {
-	date: Date;
-	dateStr: string;
-	hasData: boolean;
-	uptime: number;
-}
-
-function getUptimeColor(day: HeatmapDay): string {
-	if (!day.hasData) {
-		return "bg-secondary";
-	}
-	if (day.uptime >= 99.9) {
-		return "bg-emerald-500 hover:bg-emerald-600";
-	}
-	if (day.uptime >= 98) {
-		return "bg-emerald-400 hover:bg-emerald-500";
-	}
-	if (day.uptime >= 95) {
-		return "bg-emerald-300 hover:bg-emerald-400";
-	}
-	if (day.uptime >= 90) {
-		return "bg-amber-400 hover:bg-amber-500";
-	}
-	return "bg-red-500 hover:bg-red-600";
-}
 
 const STATUS_ICON = {
 	up: {
@@ -78,27 +49,10 @@ export function MonitorRow({
 	dailyData,
 	lastCheckedAt,
 }: MonitorRowProps) {
-	const heatmapData = useMemo(() => {
-		const result: HeatmapDay[] = [];
-		const today = localDayjs().endOf("day");
-
-		for (let i = DAYS - 1; i >= 0; i--) {
-			const date = today.subtract(i, "day");
-			const dateStr = date.format("YYYY-MM-DD");
-
-			const dayData = dailyData.find(
-				(d) => localDayjs(d.date).format("YYYY-MM-DD") === dateStr
-			);
-
-			result.push({
-				date: date.toDate(),
-				dateStr,
-				hasData: !!dayData,
-				uptime: dayData?.uptime_percentage ?? 0,
-			});
-		}
-		return result;
-	}, [dailyData]);
+	const heatmapData = useMemo(
+		() => buildUptimeHeatmapDays(dailyData, DAYS),
+		[dailyData],
+	);
 
 	const statusConfig = STATUS_ICON[currentStatus];
 
@@ -128,30 +82,14 @@ export function MonitorRow({
 			</div>
 
 			<div className="px-4 pb-4">
-				<div className="flex h-8 w-full gap-px sm:gap-[2px]">
-					{heatmapData.map((day) => (
-						<Tooltip key={day.dateStr}>
-							<TooltipTrigger asChild>
-								<div
-									className={cn(
-										"h-full flex-1 rounded-sm transition-colors",
-										getUptimeColor(day)
-									)}
-								/>
-							</TooltipTrigger>
-							<TooltipContent>
-								<div className="space-y-1 text-xs">
-									<p className="font-semibold">{formatDateOnly(day.date)}</p>
-									{day.hasData ? (
-										<p>Uptime: {day.uptime.toFixed(2)}%</p>
-									) : (
-										<p className="text-muted-foreground">No data recorded</p>
-									)}
-								</div>
-							</TooltipContent>
-						</Tooltip>
-					))}
-				</div>
+				<UptimeHeatmapStrip
+					days={heatmapData}
+					emptyLabel="No data recorded"
+					getDateLabel={(d) => formatDateOnly(d)}
+					interactive
+					isActive
+					stripClassName="flex h-8 w-full gap-px sm:gap-[2px]"
+				/>
 				<div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
 					<span>{DAYS} days ago</span>
 					<span>Today</span>
