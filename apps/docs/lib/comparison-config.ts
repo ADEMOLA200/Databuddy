@@ -30,6 +30,13 @@ export interface PricingTier {
 	databuddy: string;
 }
 
+export interface MigrationSection {
+	heading: string;
+	steps: string[];
+	guideHref: string;
+	guideLabel: string;
+}
+
 export interface ComparisonData {
 	competitor: CompetitorInfo;
 	features: ComparisonFeature[];
@@ -44,6 +51,7 @@ export interface ComparisonData {
 	};
 	faqs: FaqItem[];
 	pricingTiers: PricingTier[];
+	migrationSection?: MigrationSection;
 }
 
 export const competitors: Record<string, ComparisonData> = {
@@ -63,7 +71,7 @@ export const competitors: Record<string, ComparisonData> = {
 		hero: {
 			title: "Databuddy vs Google Analytics",
 			description:
-				"GA4 is powerful but complex, privacy-invasive, and built to serve Google's ad ecosystem. Databuddy gives you the insights you need — without the baggage.",
+				"GA4 is powerful. It's also 45KB of tracking script, a cookie consent requirement, and dozens of configuration steps between you and usable data. Databuddy is 3KB, no banners, and tracking in five minutes.",
 			cta: "Switch to privacy-first analytics",
 		},
 		seo: {
@@ -76,21 +84,24 @@ export const competitors: Record<string, ComparisonData> = {
 				name: "Cookie-free tracking",
 				databuddy: true,
 				competitor: false,
-				benefit: "No consent banners needed, higher data accuracy",
+				benefit:
+					"No consent banners — many EU sites lose 30–40% of visits to consent friction; cookieless keeps that traffic",
 				category: "privacy",
 			},
 			{
 				name: "GDPR compliant by default",
 				databuddy: true,
 				competitor: false,
-				benefit: "No DPA rulings, no configuration needed",
+				benefit:
+					"Austrian DPA and French CNIL have ruled GA4 transfers non-compliant without heavy setup; Databuddy is compliant by design",
 				category: "privacy",
 			},
 			{
 				name: "No data sampling",
 				databuddy: true,
 				competitor: false,
-				benefit: "Accurate data at every traffic volume",
+				benefit:
+					"Full data at any volume; GA4 UI caps retention at 14 months (25 max) — year-over-year analysis needs BigQuery",
 				category: "features",
 			},
 			{
@@ -104,7 +115,8 @@ export const competitors: Record<string, ComparisonData> = {
 				name: "Simple setup",
 				databuddy: true,
 				competitor: false,
-				benefit: "One script tag, tracking in minutes — no GTM required",
+				benefit:
+					"One script tag; skip GTM, Consent Mode v2, and GA4's long exploration flows",
 				category: "features",
 			},
 			{
@@ -125,7 +137,8 @@ export const competitors: Record<string, ComparisonData> = {
 				name: "Lightweight script",
 				databuddy: true,
 				competitor: false,
-				benefit: "3KB vs 17-45KB (gtag + GTM) — better Core Web Vitals",
+				benefit:
+					"3KB vs 45KB+ (gtag + GTM) — lighter JS and better Core Web Vitals",
 				category: "performance",
 			},
 			{
@@ -232,6 +245,17 @@ export const competitors: Record<string, ComparisonData> = {
 				databuddy: "Contact us",
 			},
 		],
+		migrationSection: {
+			heading: "Switch from GA4 to Databuddy in under 10 minutes",
+			steps: [
+				"Add one async script tag (~3KB)",
+				"No GTM configuration required",
+				"Page views and events flow automatically — no Enhanced Measurement setup",
+				"GDPR-friendly by default — you can remove your analytics consent banner",
+			],
+			guideHref: "/docs/getting-started",
+			guideLabel: "Read the Migration Guide",
+		},
 	},
 	plausible: {
 		competitor: {
@@ -441,7 +465,7 @@ export const competitors: Record<string, ComparisonData> = {
 		hero: {
 			title: "Databuddy vs Fathom Analytics",
 			description:
-				"Both respect privacy, but Databuddy adds AI insights, product analytics, and a free tier — things Fathom doesn't offer at any price.",
+				"Fathom is great for simple traffic stats. When you need to understand your users, you need Databuddy — product analytics, AI-powered insights, and a free plan. Same privacy values, dramatically more signal.",
 			cta: "Get more for less",
 		},
 		seo: {
@@ -451,17 +475,19 @@ export const competitors: Record<string, ComparisonData> = {
 		},
 		features: [
 			{
-				name: "AI-powered insights (Databunny)",
+				name: "Databunny (NLP agent)",
 				databuddy: true,
 				competitor: false,
-				benefit: "Ask questions in plain English — Fathom has zero AI",
+				benefit:
+					'Ask "why did traffic drop last Tuesday?" in plain English — Fathom has no NLP assistant',
 				category: "features",
 			},
 			{
-				name: "Product analytics",
+				name: "Product analytics (funnels, retention, user journeys)",
 				databuddy: true,
 				competitor: false,
-				benefit: "Track user journeys and retention — Fathom is web-only",
+				benefit:
+					"Understand what users do inside your product, not just how they found it",
 				category: "features",
 			},
 			{
@@ -489,7 +515,8 @@ export const competitors: Record<string, ComparisonData> = {
 				name: "Uptime monitoring",
 				databuddy: true,
 				competitor: false,
-				benefit: "Fathom removed theirs in Oct 2023 — Databuddy includes it",
+				benefit:
+					"Know when your site goes down without a separate tool — Fathom removed uptime monitoring in Oct 2023",
 				category: "features",
 			},
 			{

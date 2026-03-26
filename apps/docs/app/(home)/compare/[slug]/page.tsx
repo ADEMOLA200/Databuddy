@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FaqSection } from "@/components/compare/faq-section";
 import { FeatureTable } from "@/components/compare/feature-table";
+import { MigrationCtaSection } from "@/components/compare/migration-cta-section";
 import { PricingSection } from "@/components/compare/pricing-section";
 import { SocialProof } from "@/components/compare/social-proof";
 import { StatsCards } from "@/components/compare/stats-cards";
@@ -58,7 +59,8 @@ export default async function ComparisonPage({ params }: PageProps) {
 		notFound();
 	}
 
-	const { competitor, features, hero, seo, faqs, pricingTiers } = data;
+	const { competitor, features, hero, seo, faqs, pricingTiers, migrationSection } =
+		data;
 	const featuresWin = features.filter(
 		(f) => f.databuddy && !f.competitor,
 	).length;
@@ -172,6 +174,17 @@ export default async function ComparisonPage({ params }: PageProps) {
 						All Databuddy features available on the free plan — up to 10,000
 						monthly pageviews
 					</p>
+
+					{migrationSection && (
+						<div className="mt-10">
+							<MigrationCtaSection
+								guideHref={migrationSection.guideHref}
+								guideLabel={migrationSection.guideLabel}
+								heading={migrationSection.heading}
+								steps={migrationSection.steps}
+							/>
+						</div>
+					)}
 				</div>
 			</Section>
 
