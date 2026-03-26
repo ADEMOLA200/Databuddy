@@ -214,7 +214,7 @@ export const auth = betterAuth({
 		sendResetPassword: async ({ user, url }: { user: any; url: string }) => {
 			const resend = new Resend(process.env.RESEND_API_KEY as string);
 			await resend.emails.send({
-				from: "noreply@databuddy.cc",
+				from: "no-reply@databuddy.cc",
 				to: user.email,
 				subject: "Reset your password",
 				react: ResetPasswordEmail({ url }),
@@ -234,7 +234,7 @@ export const auth = betterAuth({
 		}) => {
 			const resend = new Resend(process.env.RESEND_API_KEY as string);
 			await resend.emails.send({
-				from: "noreply@databuddy.cc",
+				from: "no-reply@databuddy.cc",
 				to: user.email,
 				subject: "Verify your email",
 				react: VerificationEmail({ url }),
@@ -272,7 +272,7 @@ export const auth = betterAuth({
 
 				resend.emails
 					.send({
-						from: "noreply@databuddy.cc",
+						from: "no-reply@databuddy.cc",
 						to: email,
 						subject,
 						react: OtpEmail({ otp }),
@@ -286,7 +286,7 @@ export const auth = betterAuth({
 			sendMagicLink: ({ email, url }) => {
 				const resend = new Resend(process.env.RESEND_API_KEY as string);
 				resend.emails.send({
-					from: "noreply@databuddy.cc",
+					from: "no-reply@databuddy.cc",
 					to: email,
 					subject: "Login to Databuddy",
 					react: MagicLinkEmail({ url }),
@@ -337,7 +337,7 @@ export const auth = betterAuth({
 				const invitationLink = `https://app.databuddy.cc/invitations/${invitation.id}`;
 				const resend = new Resend(process.env.RESEND_API_KEY as string);
 				await resend.emails.send({
-					from: "noreply@databuddy.cc",
+					from: "no-reply@databuddy.cc",
 					to: email,
 					subject: `You're invited to join ${organization.name}`,
 					react: InvitationEmail({
