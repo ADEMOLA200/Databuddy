@@ -17,7 +17,7 @@ export const NoticeBanner = ({
 }) => (
 	<div
 		className={cn(
-			"notice-banner-angled-rectangle-gradient flex flex-1 items-center gap-2 rounded-sm border border-accent-foreground bg-accent-foreground/80 px-3 py-2 font-medium text-accent-brighter text-sm",
+			"notice-banner-angled-rectangle-gradient flex flex-1 items-center gap-2 rounded border border-border bg-accent px-3 py-2 font-medium text-accent-foreground text-sm",
 			className
 		)}
 	>
@@ -27,20 +27,23 @@ export const NoticeBanner = ({
 					{icon
 						? cloneElement(icon, {
 								...icon.props,
-								className: cn("text-accent", icon.props.className),
+								className: cn(
+									"shrink-0 text-accent-foreground",
+									icon.props.className
+								),
 								"aria-hidden": true,
 								weight: "fill",
 								size: 20,
 							})
 						: null}
-					<div className="flex flex-1 flex-col">
+					<div className="flex flex-1 flex-col gap-0.5">
 						{title ? (
-							<h3 className="font-medium text-accent-brighter text-sm">
+							<h3 className="text-balance font-medium text-accent-foreground text-sm">
 								{title}
 							</h3>
 						) : null}
 						{description ? (
-							<p className="text-nowrap text-accent-brighter/80 text-xs">
+							<p className="text-pretty text-accent-foreground/90 text-xs">
 								{description}
 							</p>
 						) : null}
