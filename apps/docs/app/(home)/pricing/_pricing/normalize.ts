@@ -33,27 +33,6 @@ export function getEventsInfo(items: RawItem[]): {
 	return { included, tiers };
 }
 
-export function getWebsitesInfo(items: RawItem[]): {
-	included: number | "inf" | null;
-	overage: number | null;
-} {
-	let included: number | "inf" | null = null;
-	let overage: number | null = null;
-	for (const item of items) {
-		const isWeb =
-			(item.type === "feature" || item.type === "priced_feature") &&
-			item.feature_id === "websites";
-		if (!isWeb) {
-			continue;
-		}
-		included = item.included_usage as number | "inf";
-		if (item.type === "priced_feature" && typeof item.price === "number") {
-			overage = item.price;
-		}
-	}
-	return { included, overage };
-}
-
 export function getAssistantMessagesPerDay(items: RawItem[]): number | null {
 	for (const item of items) {
 		const isAssistant =
@@ -77,8 +56,6 @@ export function normalizePlans(raw: RawPlan[]): NormalizedPlan[] {
 				priceMonthly: 0,
 				includedEventsMonthly: 0,
 				eventTiers: null,
-				websitesIncluded: "inf",
-				websitesOveragePerUnit: null,
 				assistantMessagesPerDay: null,
 			};
 		}
@@ -86,8 +63,6 @@ export function normalizePlans(raw: RawPlan[]): NormalizedPlan[] {
 		const priceMonthly = getPriceMonthly(plan.items);
 		const { included: includedEventsMonthly, tiers: eventTiers } =
 			getEventsInfo(plan.items);
-		const { included: websitesIncluded, overage: websitesOveragePerUnit } =
-			getWebsitesInfo(plan.items);
 		const assistantMessagesPerDay = getAssistantMessagesPerDay(plan.items);
 		return {
 			id: plan.id,
@@ -95,8 +70,6 @@ export function normalizePlans(raw: RawPlan[]): NormalizedPlan[] {
 			priceMonthly,
 			includedEventsMonthly,
 			eventTiers,
-			websitesIncluded,
-			websitesOveragePerUnit,
 			assistantMessagesPerDay,
 		};
 	});

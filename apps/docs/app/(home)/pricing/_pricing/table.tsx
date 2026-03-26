@@ -121,42 +121,6 @@ export function PlansComparisonTable({ plans }: Props) {
 								</td>
 							))}
 						</tr>
-						{/* Websites row (from normalized plan data) */}
-						<tr className="border-border border-t hover:bg-card/10">
-							<td className="px-4 py-3 text-muted-foreground text-sm sm:px-5 lg:px-6">
-								Websites
-							</td>
-							{plans.map((p) => (
-								<td
-									className={planComparisonTdClass(p.id)}
-									key={`sites-${p.id}`}
-								>
-									{p.id === "enterprise" ? (
-										"Custom"
-									) : p.websitesIncluded == null ? (
-										<FeatureX />
-									) : p.websitesIncluded === "inf" ? (
-										"Unlimited"
-									) : (
-										<div className="flex flex-col items-center gap-0.5">
-											<span>
-												{p.websitesIncluded.toLocaleString()} included
-											</span>
-											{p.websitesOveragePerUnit == null ? null : (
-												<span className="text-muted-foreground text-xs">
-													+
-													{new Intl.NumberFormat("en-US", {
-														style: "currency",
-														currency: "USD",
-													}).format(p.websitesOveragePerUnit)}
-													/mo each
-												</span>
-											)}
-										</div>
-									)}
-								</td>
-							))}
-						</tr>
 						{/* Tiered overage row */}
 						<tr className="border-border border-t hover:bg-card/10">
 							<td className="px-4 py-3 text-muted-foreground text-sm sm:px-5 lg:px-6">
