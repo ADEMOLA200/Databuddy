@@ -112,7 +112,7 @@ export default function Hero({
 							<a href="https://app.databuddy.cc/login">Start free</a>
 						</SciFiButton>
 						<SciFiButton asChild className="px-6 py-5 text-base sm:px-8">
-							<Link href="/docs">Live demo</Link>
+							<Link href="/demo">Live demo</Link>
 						</SciFiButton>
 					</div>
 
