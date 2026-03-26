@@ -26,14 +26,15 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-interface User {
+export type ProfileButtonUser = {
+	id?: string;
 	name?: string | null;
 	email?: string | null;
 	image?: string | null;
-}
+};
 
 interface ProfileButtonClientProps {
-	user: User;
+	user: ProfileButtonUser | null;
 }
 
 interface DeviceSession {
@@ -178,7 +179,7 @@ export function ProfileButtonClient({ user }: ProfileButtonClientProps) {
 					</DropdownMenuTrigger>
 				</TooltipTrigger>
 				<TooltipContent side="right">
-					<p>{user?.email}</p>
+					<p>{user?.email ?? "Account"}</p>
 				</TooltipContent>
 			</Tooltip>
 

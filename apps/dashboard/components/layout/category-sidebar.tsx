@@ -199,15 +199,13 @@ export function CategorySidebar({
 					</div>
 
 					{user ? (
-						<>
-							<div className="flex justify-center">
-								<PendingInvitationsButton />
-							</div>
-							<div className="flex justify-center">
-								<ProfileButtonClient user={user} />
-							</div>
-						</>
+						<div className="flex justify-center">
+							<PendingInvitationsButton />
+						</div>
 					) : null}
+					<div className="flex justify-center">
+						<ProfileButtonClient user={user} />
+					</div>
 				</div>
 
 				<HelpDialog onOpenChangeAction={setHelpOpen} open={helpOpen} />

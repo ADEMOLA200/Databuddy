@@ -3,10 +3,12 @@ import { type NextRequest, NextResponse } from "next/server";
 
 const AUTH_ROUTES = ["/login", "/register"];
 
+const isProduction = process.env.NODE_ENV === "production";
+
 export function proxy(request: NextRequest) {
 	const { pathname, searchParams } = request.nextUrl;
 	const sessionCookie = getSessionCookie(request, {
-		cookiePrefix: "databuddy",
+		cookiePrefix: isProduction ? "databuddy" : "databuddy-dev",
 	});
 
 	const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
