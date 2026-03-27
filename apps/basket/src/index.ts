@@ -5,7 +5,7 @@ import {
 	enrichBasketWideEvent,
 	flushBatchedAxiomDrain,
 } from "@lib/evlog-basket";
-import { disconnectProducer } from "@lib/producer";
+import { disconnect, disposeRuntime, runPromise } from "@lib/producer";
 import { buildBasketErrorPayload } from "@lib/structured-errors";
 import { captureError } from "@lib/tracing";
 import basketRouter from "@routes/basket";
@@ -51,9 +51,15 @@ process.on("SIGTERM", async () => {
 			error: error instanceof Error ? error.message : String(error),
 		})
 	);
-	await disconnectProducer().catch((error) =>
+	await runPromise(disconnect).catch((error) =>
 		log.error({
 			lifecycle: "shutdown",
+			error: error instanceof Error ? error.message : String(error),
+		})
+	);
+	await disposeRuntime().catch((error) =>
+		log.error({
+			lifecycle: "runtimeDispose",
 			error: error instanceof Error ? error.message : String(error),
 		})
 	);
@@ -69,9 +75,15 @@ process.on("SIGINT", async () => {
 			error: error instanceof Error ? error.message : String(error),
 		})
 	);
-	await disconnectProducer().catch((error) =>
+	await runPromise(disconnect).catch((error) =>
 		log.error({
 			lifecycle: "shutdown",
+			error: error instanceof Error ? error.message : String(error),
+		})
+	);
+	await disposeRuntime().catch((error) =>
+		log.error({
+			lifecycle: "runtimeDispose",
 			error: error instanceof Error ? error.message : String(error),
 		})
 	);

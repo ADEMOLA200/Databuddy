@@ -1,5 +1,5 @@
 import type { BlockedTraffic } from "@databuddy/db";
-import { sendEvent } from "@lib/producer";
+import { runFork, send } from "@lib/producer";
 import { captureError } from "@lib/tracing";
 import { extractIpFromRequest, getGeo } from "@utils/ip-geo";
 import { parseUserAgent } from "@utils/user-agent";
@@ -83,7 +83,7 @@ async function _logBlockedTrafficAsync(
 			created_at: now,
 		};
 
-		sendEvent("analytics-blocked-traffic", blockedEvent);
+		runFork(send("analytics-blocked-traffic", blockedEvent));
 	} catch (error) {
 		captureError(error, { message: "Failed to log blocked traffic" });
 	}

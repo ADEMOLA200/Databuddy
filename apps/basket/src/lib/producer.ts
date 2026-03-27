@@ -1,64 +1,59 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import { clickHouse, TABLE_NAMES } from "@databuddy/db";
 import { captureError, record } from "@lib/tracing";
-import { createError, log } from "evlog";
-import { useLogger } from "evlog/elysia";
+import { Data, Effect, Layer, ManagedRuntime, Ref, Schedule } from "effect";
+import { createError } from "evlog";
 import { CompressionTypes, Kafka, type Producer } from "kafkajs";
 
-/**
- * Merge producer transport context into the request wide event when in an HTTP
- * handler; otherwise emit a standalone structured line (timer flush, etc.).
- */
-function mergeProducerContext(data: Record<string, unknown>): void {
-	try {
-		useLogger().set({ producer: data });
-	} catch {
-		log.info({ producer: data });
-	}
-}
-
-/**
- * JSON stringify with undefined -> null conversion
- * ClickHouse needs explicit nulls, not omitted fields
- */
 function stringifyEvent(event: unknown): string {
 	return JSON.stringify(event, (_key, value) =>
 		value === undefined ? null : value
 	);
 }
 
+export class KafkaConnectionError extends Data.TaggedError(
+	"KafkaConnectionError"
+)<{ readonly cause?: Error }> {}
+export class KafkaSendError extends Data.TaggedError("KafkaSendError")<{
+	readonly topic: string;
+	readonly cause?: Error;
+}> {}
+export class BufferOverflowError extends Data.TaggedError(
+	"BufferOverflowError"
+)<{ readonly bufferLength: number }> {}
+export class FlushError extends Data.TaggedError("FlushError")<{
+	readonly table: string;
+	readonly cause?: Error;
+}> {}
+
+export type ProducerError =
+	| KafkaConnectionError
+	| KafkaSendError
+	| BufferOverflowError
+	| FlushError;
+
 interface BufferedEvent {
 	table: string;
 	event: unknown;
 }
 
-interface ProducerStats {
+interface ProducerState {
+	buffer: BufferedEvent[];
 	sent: number;
-	failed: number;
+	failedCount: number;
 	buffered: number;
 	flushed: number;
 	dropped: number;
 	errors: number;
 	lastErrorTime: number | null;
+	connected: boolean;
+	connectionFailed: boolean;
+	lastRetry: number;
+	shuttingDown: boolean;
+	flushing: boolean;
 }
 
 interface ProducerConfig {
-	broker?: string;
-	username?: string;
-	password?: string;
-	selfHost?: boolean;
-	reconnectCooldown?: number;
-	kafkaTimeout?: number;
-	maxProducerRetries?: number;
-	producerRetryDelay?: number;
-	bufferInterval?: number;
-	bufferMax?: number;
-	bufferHardMax?: number;
-	chunkSize?: number;
-	flushTimeout?: number;
-}
-
-interface RequiredProducerConfig {
 	broker?: string;
 	username?: string;
 	password?: string;
@@ -71,612 +66,451 @@ interface RequiredProducerConfig {
 	bufferMax: number;
 	bufferHardMax: number;
 	chunkSize: number;
-	flushTimeout: number;
 }
 
-interface ProducerDependencies {
-	clickHouse: ClickHouseClient;
-	topicMap: Record<string, string>;
-	onError?: (error: Error) => void;
+const INITIAL_STATE: ProducerState = {
+	buffer: [],
+	sent: 0,
+	failedCount: 0,
+	buffered: 0,
+	flushed: 0,
+	dropped: 0,
+	errors: 0,
+	lastErrorTime: null,
+	connected: false,
+	connectionFailed: false,
+	lastRetry: 0,
+	shuttingDown: false,
+	flushing: false,
+};
+
+function toError(err: unknown): Error {
+	return err instanceof Error ? err : new Error(String(err));
 }
 
-export class EventProducer {
-	private readonly config: RequiredProducerConfig;
-	private readonly dependencies: ProducerDependencies;
-	private readonly stats: ProducerStats;
-	private readonly buffer: BufferedEvent[] = [];
+function makeProducerEffects(
+	config: ProducerConfig,
+	kafka: Producer | null,
+	ch: ClickHouseClient,
+	topicMap: Record<string, string>,
+	ref: Ref.Ref<ProducerState>
+) {
+	const enabled = !config.selfHost && Boolean(config.broker);
 
-	private kafka: Kafka | null = null;
-	private producer: Producer | null = null;
-	private connected = false;
-	private failed = false;
-	private lastRetry = 0;
-	private shuttingDown = false;
-	private timer: Timer | null = null;
-	private started = false;
-	private flushing = false;
+	const inc = (field: keyof ProducerState, n = 1) =>
+		Ref.update(ref, (s) => ({ ...s, [field]: (s[field] as number) + n }));
 
-	constructor(config: ProducerConfig, dependencies: ProducerDependencies) {
-		this.config = {
-			selfHost: false,
-			reconnectCooldown: 60_000,
-			kafkaTimeout: 10_000,
-			maxProducerRetries: 3,
-			producerRetryDelay: 300,
-			bufferInterval: 5000,
-			bufferMax: 1000,
-			bufferHardMax: 10_000,
-			chunkSize: 5000,
-			flushTimeout: 30_000,
-			...config,
-		};
-		this.dependencies = dependencies;
-		this.stats = {
-			sent: 0,
-			failed: 0,
-			buffered: 0,
-			flushed: 0,
-			dropped: 0,
-			errors: 0,
-			lastErrorTime: null,
-		};
-
-		if (this.isEnabled()) {
-			this.initializeProducer();
+	const connect: Effect.Effect<boolean> = Effect.gen(function* () {
+		if (!(enabled && kafka)) {
+			return (yield* Ref.get(ref)).connected;
 		}
-	}
-
-	private isEnabled(): boolean {
-		if (this.config.selfHost) {
-			return false;
-		}
-		return Boolean(this.config.broker);
-	}
-
-	private initializeProducer(): void {
-		if (!(this.config.username && this.config.password)) {
-			captureError(
-				createError({
-					message: "Kafka producer disabled: credentials missing",
-					status: 500,
-					why: "REDPANDA_BROKER was set without username and password.",
-					fix: "Set broker credentials or use ClickHouse-only mode.",
-				})
-			);
-			return;
-		}
-
-		this.kafka = new Kafka({
-			clientId: "basket",
-			brokers: [this.config.broker ?? ""],
-			connectionTimeout: 5000,
-			requestTimeout: this.config.kafkaTimeout,
-			sasl: {
-				mechanism: "scram-sha-256",
-				username: this.config.username,
-				password: this.config.password,
-			},
-		});
-
-		this.producer = this.kafka.producer({
-			allowAutoTopicCreation: true,
-			retry: {
-				initialRetryTime: this.config.producerRetryDelay,
-				retries: this.config.maxProducerRetries,
-				maxRetryTime: 3000,
-			},
-			idempotent: true,
-			maxInFlightRequests: 15,
-		});
-	}
-
-	private async connect(): Promise<boolean> {
-		if (!(this.isEnabled() && this.producer) || this.connected) {
-			return this.connected;
-		}
-
+		const s = yield* Ref.get(ref);
+		if (s.connected) return true;
 		if (
-			this.failed &&
-			Date.now() - this.lastRetry < this.config.reconnectCooldown
-		) {
+			s.connectionFailed &&
+			Date.now() - s.lastRetry < config.reconnectCooldown
+		)
 			return false;
+
+		return yield* Effect.tryPromise({
+			try: () => kafka.connect(),
+			catch: (e) => new KafkaConnectionError({ cause: toError(e) }),
+		}).pipe(
+			Effect.tap(() =>
+				Ref.update(ref, (st) => ({
+					...st,
+					connected: true,
+					connectionFailed: false,
+					lastRetry: 0,
+				}))
+			),
+			Effect.as(true),
+			Effect.catchTag("KafkaConnectionError", (err) =>
+				Ref.update(ref, (st) => ({
+					...st,
+					connectionFailed: true,
+					lastRetry: Date.now(),
+					errors: st.errors + 1,
+					lastErrorTime: Date.now(),
+				})).pipe(
+					Effect.tap(() =>
+						Effect.sync(() =>
+							captureError(err.cause, {
+								message:
+									"Redpanda connection failed, using ClickHouse fallback",
+							})
+						)
+					),
+					Effect.as(false)
+				)
+			)
+		);
+	});
+
+	const flush: Effect.Effect<void, FlushError> = Effect.gen(function* () {
+		const pre = yield* Ref.get(ref);
+		if (pre.buffer.length === 0 || pre.flushing) return;
+
+		const batchSize = Math.min(pre.buffer.length, config.bufferMax);
+		const items = yield* Ref.modify(ref, (s) => [
+			s.buffer.slice(0, batchSize),
+			{ ...s, buffer: s.buffer.slice(batchSize), flushing: true },
+		]);
+
+		const grouped = new Map<string, BufferedEvent[]>();
+		for (const item of items) {
+			const list = grouped.get(item.table);
+			if (list) list.push(item);
+			else grouped.set(item.table, [item]);
 		}
 
-		try {
-			await this.producer.connect();
-			this.connected = true;
-			this.failed = false;
-			this.lastRetry = 0;
-			return true;
-		} catch (error) {
-			this.failed = true;
-			this.lastRetry = Date.now();
-			this.stats.errors += 1;
-			this.stats.lastErrorTime = Date.now();
-			captureError(error, {
-				message: "Redpanda connection failed, using ClickHouse fallback",
-			});
-			if (this.dependencies.onError) {
-				const cause = error instanceof Error ? error : new Error(String(error));
-				this.dependencies.onError(
-					createError({
-						message: "Redpanda connection failed",
-						status: 500,
-						why: cause.message,
-						fix: "Check broker credentials, network, and broker health.",
-						cause,
-					})
-				);
-			}
-			return false;
-		}
-	}
-
-	private async flush(): Promise<void> {
-		if (this.buffer.length === 0 || this.flushing) {
-			return;
-		}
-
-		this.flushing = true;
-		const batchSize = Math.min(this.buffer.length, this.config.bufferMax);
-		const items = this.buffer.splice(0, batchSize);
-
-		try {
-			const grouped = items.reduce(
-				(acc, { table, event }) => {
-					if (!acc[table]) {
-						acc[table] = [];
-					}
-					acc[table].push(event);
-					return acc;
-				},
-				{} as Record<string, unknown[]>
-			);
-
-			const results = await Promise.allSettled(
-				Object.entries(grouped).map(async ([table, events]) => {
-					const controller = new AbortController();
-					const timeout = setTimeout(
-						() => controller.abort(),
-						this.config.flushTimeout
-					);
-
-					try {
-						await record("clickhouseFallbackInsert", async () => {
-							mergeProducerContext({
-								op: "clickhouse_fallback",
-								table,
-								eventCount: events.length,
-								chunkSize: this.config.chunkSize,
-							});
-
-							for (let i = 0; i < events.length; i += this.config.chunkSize) {
-								const chunk = events.slice(i, i + this.config.chunkSize);
-								await this.dependencies.clickHouse.insert({
+		yield* Effect.forEach(
+			grouped.entries(),
+			([table, entries]: [string, BufferedEvent[]]) => {
+				const events = entries.map((e: BufferedEvent) => e.event);
+				return Effect.tryPromise({
+					try: () =>
+						record("clickhouseFallbackInsert", async () => {
+							for (let i = 0; i < events.length; i += config.chunkSize) {
+								await ch.insert({
 									table,
-									values: chunk,
+									values: events.slice(i, i + config.chunkSize),
 									format: "JSONEachRow",
 								});
 							}
-
-							this.stats.flushed += events.length;
-							mergeProducerContext({
-								op: "clickhouse_fallback",
-								table,
-								flushed: events.length,
-							});
-						});
-					} catch (error) {
-						clearTimeout(timeout);
-						this.stats.errors += 1;
-						captureError(error, { message: `Flush failed for ${table}` });
-
-						if (
-							this.buffer.length + events.length <=
-							this.config.bufferHardMax
-						) {
-							for (const event of events) {
-								this.buffer.push({ table, event });
-							}
-						} else {
-							this.stats.dropped += events.length;
-							captureError(error, {
-								message: `Dropped ${events.length} events - buffer full`,
-								table,
-								bufferSize: this.buffer.length,
-							});
-						}
-					} finally {
-						clearTimeout(timeout);
-					}
-				})
-			);
-
-			const failures = results.filter((r) => r.status === "rejected");
-			if (failures.length > 0) {
-				captureError(
-					createError({
-						message: "Table flush operations failed",
-						status: 500,
-						why: `${String(failures.length)} flush operation(s) rejected.`,
-						fix: "Inspect ClickHouse connectivity and table configuration.",
-					}),
-					{ failures: failures.length }
+						}),
+					catch: (e) => new FlushError({ table, cause: toError(e) }),
+				}).pipe(
+					Effect.tap(() => inc("flushed", events.length)),
+					Effect.catchTag("FlushError", (err) =>
+						Ref.get(ref).pipe(
+							Effect.flatMap((s) =>
+								s.buffer.length + events.length <= config.bufferHardMax
+									? Ref.update(ref, (st) => ({
+											...st,
+											buffer: [
+												...st.buffer,
+												...events.map((event: unknown) => ({ table, event })),
+											],
+											errors: st.errors + 1,
+										}))
+									: inc("dropped", events.length).pipe(
+											Effect.tap(() => inc("errors", 1)),
+											Effect.tap(() =>
+												Effect.sync(() =>
+													captureError(err.cause, {
+														message: `Dropped ${String(events.length)} events - buffer full`,
+													})
+												)
+											)
+										)
+							)
+						)
+					)
 				);
-			}
-		} catch (error) {
-			this.stats.errors += 1;
-			captureError(error, { message: "Critical flush error" });
-			this.buffer.push(...items);
-		} finally {
-			this.flushing = false;
-		}
-	}
+			},
+			{ concurrency: "unbounded" }
+		);
 
-	private startTimer(): void {
-		if (this.started || this.shuttingDown) {
-			return;
-		}
-		this.started = true;
-		this.timer = setInterval(() => {
-			if (!this.flushing && this.buffer.length > 0) {
-				// Wrap auto-flush in a span
-				record("producer.autoFlush", async () => {
-					await this.flush().catch((error) => {
-						this.stats.errors += 1;
-						captureError(error, { message: "Flush timer error" });
-					});
-				});
-			}
-		}, this.config.bufferInterval);
-	}
+		yield* Ref.update(ref, (s) => ({ ...s, flushing: false }));
+	});
 
-	private toBuffer(topic: string, event: unknown): void {
-		if (this.shuttingDown) {
-			captureError(
-				createError({
-					message: "Cannot buffer event during shutdown",
-					status: 503,
-					why: "Producer is shutting down and new events are not accepted.",
-					fix: "During graceful shutdown, events may be dropped.",
-				})
-			);
-			return;
-		}
-
-		const table = this.dependencies.topicMap[topic];
-		if (!table) {
-			this.stats.errors += 1;
-			captureError(
-				createError({
-					message: "Unknown Kafka topic",
-					status: 500,
-					why: "Topic is not mapped to a ClickHouse table.",
-					fix: "Check topicMap configuration.",
-				}),
-				{ topic }
-			);
-			return;
-		}
-
-		if (this.buffer.length >= this.config.bufferHardMax) {
-			this.stats.dropped += 1;
-			captureError(
-				createError({
-					message: "Buffer overflow, dropping event",
-					status: 500,
-					why: "Internal buffer exceeded bufferHardMax.",
-					fix: "Investigate downstream slowness or increase buffer limits.",
-				}),
-				{ bufferLength: this.buffer.length }
-			);
-			return;
-		}
-
-		this.buffer.push({ table, event });
-		this.stats.buffered += 1;
-
-		if (!this.timer) {
-			this.startTimer();
-		}
-		if (this.buffer.length >= this.config.bufferMax && !this.flushing) {
-			this.flush().catch((error) => {
-				this.stats.errors += 1;
-				captureError(error, { message: "Auto-flush error" });
-			});
-		}
-	}
-
-	send(topic: string, event: unknown, key?: string): Promise<void> {
-		return record("kafkaSend", async () => {
-			mergeProducerContext({
-				op: "kafka_send",
-				topic,
-				hasKey: Boolean(key),
-			});
-
-			if (this.shuttingDown) {
-				this.toBuffer(topic, event);
-				mergeProducerContext({
-					op: "kafka_send",
-					topic,
-					buffered: true,
-					reason: "shutting_down",
-				});
+	const toBuffer = (
+		topic: string,
+		event: unknown
+	): Effect.Effect<void, BufferOverflowError> =>
+		Effect.gen(function* () {
+			const table = topicMap[topic];
+			if (!table) {
+				yield* inc("errors", 1);
+				yield* Effect.sync(() =>
+					captureError(
+						createError({
+							message: "Unknown Kafka topic",
+							status: 500,
+							why: `Topic "${topic}" is not mapped to a ClickHouse table.`,
+							fix: "Check topicMap configuration.",
+						})
+					)
+				);
 				return;
 			}
 
-			try {
-				if (
-					this.isEnabled() &&
-					(await this.connect()) &&
-					this.producer &&
-					this.connected
-				) {
-					try {
-						await this.producer.send({
-							topic,
-							messages: [
-								{
-									value: stringifyEvent(event),
-									key: key || (event as { client_id?: string }).client_id,
-								},
-							],
-							timeout: this.config.kafkaTimeout,
-							compression: CompressionTypes.GZIP,
-						});
-						this.stats.sent += 1;
-						mergeProducerContext({
-							op: "kafka_send",
-							topic,
-							sent: true,
-							totalSent: this.stats.sent,
-						});
-						return;
-					} catch (error) {
-						this.stats.failed += 1;
-						captureError(error, {
-							message: "Redpanda send failed, buffering to ClickHouse",
-						});
-						this.failed = true;
-						mergeProducerContext({
-							op: "kafka_send",
-							topic,
-							sendFailed: true,
-							totalFailed: this.stats.failed,
-						});
-					}
-				}
-				this.toBuffer(topic, event);
-				mergeProducerContext({
-					op: "kafka_send",
-					topic,
-					buffered: true,
-					reason: "not_connected",
-				});
-			} catch (error) {
-				this.stats.errors += 1;
-				this.stats.lastErrorTime = Date.now();
-				captureError(error, { message: "Send error" });
-				this.toBuffer(topic, event);
-				mergeProducerContext({
-					op: "kafka_send",
-					topic,
-					error: true,
-					buffered: true,
-				});
+			const result = yield* Ref.modify(ref, (s) => {
+				if (s.shuttingDown)
+					return ["shutdown" as const, { ...s, dropped: s.dropped + 1 }];
+				if (s.buffer.length >= config.bufferHardMax)
+					return ["overflow" as const, { ...s, dropped: s.dropped + 1 }];
+				return [
+					"ok" as const,
+					{
+						...s,
+						buffer: [...s.buffer, { table, event }],
+						buffered: s.buffered + 1,
+					},
+				];
+			});
+
+			if (result === "overflow") {
+				return yield* Effect.fail(
+					new BufferOverflowError({
+						bufferLength: (yield* Ref.get(ref)).buffer.length,
+					})
+				);
 			}
 		});
-	}
 
-	sendEvent(topic: string, event: unknown, key?: string): void {
-		this.send(topic, event, key).catch((error) => {
-			this.stats.errors += 1;
-			captureError(error, { message: "sendEvent error" });
+	const bufferAll = (topic: string, events: unknown[]) =>
+		Effect.forEach(events, (e) => toBuffer(topic, e), {
+			discard: true,
 		});
-	}
 
-	async sendEventSync(
+	const sendViaKafka = (
+		topic: string,
+		messages: Array<{ value: string; key?: string }>,
+		fallbackEvents: unknown[]
+	): Effect.Effect<void, ProducerError> =>
+		Effect.gen(function* () {
+			const s = yield* Ref.get(ref);
+			if (s.shuttingDown) {
+				yield* bufferAll(topic, fallbackEvents);
+				return;
+			}
+
+			if (enabled && kafka) {
+				const isConnected = yield* connect;
+				if (isConnected) {
+					const sent = yield* Effect.tryPromise({
+						try: () =>
+							kafka.send({
+								topic,
+								messages,
+								timeout: config.kafkaTimeout,
+								compression: CompressionTypes.GZIP,
+							}),
+						catch: (e) => new KafkaSendError({ topic, cause: toError(e) }),
+					}).pipe(
+						Effect.tap(() => inc("sent", messages.length)),
+						Effect.as(true),
+						Effect.catchTag("KafkaSendError", (err) =>
+							Ref.update(ref, (st) => ({
+								...st,
+								connectionFailed: true,
+								failedCount: st.failedCount + messages.length,
+							})).pipe(
+								Effect.tap(() =>
+									Effect.sync(() =>
+										captureError(err.cause, {
+											message: "Redpanda send failed, buffering to ClickHouse",
+										})
+									)
+								),
+								Effect.as(false)
+							)
+						)
+					);
+					if (sent) return;
+				}
+			}
+
+			yield* bufferAll(topic, fallbackEvents);
+		});
+
+	const sendOne = (
 		topic: string,
 		event: unknown,
 		key?: string
-	): Promise<void> {
-		await this.send(topic, event, key);
-	}
+	): Effect.Effect<void, ProducerError> =>
+		sendViaKafka(
+			topic,
+			[
+				{
+					value: stringifyEvent(event),
+					key: key || (event as { client_id?: string }).client_id,
+				},
+			],
+			[event]
+		);
 
-	sendEventBatch(topic: string, events: unknown[]): Promise<void> {
-		return record("kafkaSendBatch", async () => {
-			if (events.length === 0) {
-				return;
-			}
+	const sendMany = (
+		topic: string,
+		events: unknown[]
+	): Effect.Effect<void, ProducerError> => {
+		if (events.length === 0) return Effect.void;
+		return sendViaKafka(
+			topic,
+			events.map((e) => ({
+				value: stringifyEvent(e),
+				key:
+					(e as { client_id?: string }).client_id ||
+					(e as { event_id?: string }).event_id,
+			})),
+			events
+		);
+	};
 
-			mergeProducerContext({
-				op: "kafka_send_batch",
-				topic,
-				batchSize: events.length,
-			});
-
-			if (this.shuttingDown) {
-				for (const e of events) {
-					this.toBuffer(topic, e);
-				}
-				mergeProducerContext({
-					op: "kafka_send_batch",
-					topic,
-					buffered: true,
-					reason: "shutting_down",
-				});
-				return;
-			}
-
-			try {
-				if (
-					this.isEnabled() &&
-					(await this.connect()) &&
-					this.producer &&
-					this.connected
-				) {
-					try {
-						await this.producer.send({
-							topic,
-							messages: events.map((e) => ({
-								value: stringifyEvent(e),
-								key:
-									(e as { client_id?: string; event_id?: string }).client_id ||
-									(e as { event_id?: string }).event_id,
-							})),
-							timeout: this.config.kafkaTimeout,
-							compression: CompressionTypes.GZIP,
-						});
-						this.stats.sent += events.length;
-						mergeProducerContext({
-							op: "kafka_send_batch",
-							topic,
-							sent: true,
-							totalSent: this.stats.sent,
-						});
-						return;
-					} catch (error) {
-						this.stats.failed += events.length;
-						captureError(error, {
-							message: "Redpanda batch failed, buffering to ClickHouse",
-						});
-						this.failed = true;
-						mergeProducerContext({
-							op: "kafka_send_batch",
-							topic,
-							sendFailed: true,
-							totalFailed: this.stats.failed,
-						});
-					}
-				}
-				for (const e of events) {
-					this.toBuffer(topic, e);
-				}
-				mergeProducerContext({
-					op: "kafka_send_batch",
-					topic,
-					buffered: true,
-					reason: "not_connected",
-				});
-			} catch (error) {
-				this.stats.errors += 1;
-				captureError(error, { message: "sendEventBatch error" });
-				for (const e of events) {
-					this.toBuffer(topic, e);
-				}
-				mergeProducerContext({
-					op: "kafka_send_batch",
-					topic,
-					error: true,
-					buffered: true,
-				});
-			}
-		});
-	}
-
-	async disconnect(): Promise<void> {
-		if (this.shuttingDown) {
-			return;
+	const shutDown: Effect.Effect<void> = Effect.gen(function* () {
+		yield* Ref.update(ref, (s) => ({ ...s, shuttingDown: true }));
+		yield* Effect.sleep("1 second");
+		yield* flush.pipe(Effect.catchAll(() => Effect.void));
+		const post = yield* Ref.get(ref);
+		if (post.buffer.length > 0 && !post.flushing)
+			yield* flush.pipe(Effect.catchAll(() => Effect.void));
+		if (post.connected && kafka) {
+			yield* Effect.tryPromise({
+				try: () => kafka.disconnect(),
+				catch: (e) => new KafkaConnectionError({ cause: toError(e) }),
+			}).pipe(
+				Effect.ensuring(Ref.update(ref, (s) => ({ ...s, connected: false }))),
+				Effect.catchAll((err) =>
+					Effect.sync(() =>
+						captureError(err.cause, {
+							message: "Error disconnecting Redpanda producer",
+						})
+					)
+				)
+			);
 		}
-		this.shuttingDown = true;
+	});
 
-		// Wait a bit for in-flight requests to complete
-		await new Promise((r) => setTimeout(r, 1000));
+	const stats: Effect.Effect<ProducerStatsSnapshot> = Ref.get(ref).pipe(
+		Effect.map(
+			({
+				buffer,
+				flushing: _f,
+				shuttingDown: _s,
+				connectionFailed,
+				...rest
+			}) => ({
+				...rest,
+				failed: connectionFailed,
+				bufferSize: buffer.length,
+				kafkaEnabled: enabled,
+			})
+		)
+	);
 
-		// Flush remaining buffer
-		await this.flush();
-
-		// Try one more time if there's still items
-		if (this.buffer.length > 0 && !this.flushing) {
-			await this.flush();
-		}
-
-		if (this.timer) {
-			clearInterval(this.timer);
-			this.timer = null;
-			this.started = false;
-		}
-
-		if (this.connected && this.producer) {
-			try {
-				await this.producer.disconnect();
-			} catch (error) {
-				captureError(error, {
-					message: "Error disconnecting Redpanda producer",
-				});
-			} finally {
-				this.connected = false;
-			}
-		}
-	}
-
-	getStats() {
-		return {
-			...this.stats,
-			bufferSize: this.buffer.length,
-			connected: this.connected,
-			failed: this.failed,
-			kafkaEnabled: this.isEnabled(),
-			lastRetry: this.lastRetry,
-		};
-	}
+	return { flush, sendOne, sendMany, shutDown, stats };
 }
 
-const defaultConfig: ProducerConfig = {
+function initializeKafka(config: ProducerConfig): Producer | null {
+	if (config.selfHost || !config.broker) return null;
+	if (!(config.username && config.password)) {
+		captureError(
+			createError({
+				message: "Kafka producer disabled: credentials missing",
+				status: 500,
+				why: "REDPANDA_BROKER was set without username and password.",
+				fix: "Set broker credentials or use ClickHouse-only mode.",
+			})
+		);
+		return null;
+	}
+
+	return new Kafka({
+		clientId: "basket",
+		brokers: [config.broker],
+		connectionTimeout: 5000,
+		requestTimeout: config.kafkaTimeout,
+		sasl: {
+			mechanism: "scram-sha-256",
+			username: config.username,
+			password: config.password,
+		},
+	}).producer({
+		allowAutoTopicCreation: true,
+		retry: {
+			initialRetryTime: config.producerRetryDelay,
+			retries: config.maxProducerRetries,
+			maxRetryTime: 3000,
+		},
+		idempotent: true,
+		maxInFlightRequests: 15,
+	});
+}
+
+export interface ProducerStatsSnapshot {
+	sent: number;
+	failedCount: number;
+	buffered: number;
+	flushed: number;
+	dropped: number;
+	errors: number;
+	lastErrorTime: number | null;
+	bufferSize: number;
+	connected: boolean;
+	failed: boolean;
+	kafkaEnabled: boolean;
+	lastRetry: number;
+}
+
+const CONFIG: ProducerConfig = {
 	broker: process.env.REDPANDA_BROKER,
 	username: process.env.REDPANDA_USER,
 	password: process.env.REDPANDA_PASSWORD,
 	selfHost: process.env.SELFHOST === "true",
+	reconnectCooldown: 60_000,
+	kafkaTimeout: 10_000,
+	maxProducerRetries: 3,
+	producerRetryDelay: 300,
+	bufferInterval: 5000,
+	bufferMax: 1000,
+	bufferHardMax: 10_000,
+	chunkSize: 5000,
 };
 
-let defaultProducer: EventProducer | null = null;
+const TOPIC_MAP: Record<string, string> = {
+	"analytics-events": TABLE_NAMES.events,
+	"analytics-outgoing-links": TABLE_NAMES.outgoing_links,
+	"analytics-error-spans": TABLE_NAMES.error_spans,
+	"analytics-vitals-spans": TABLE_NAMES.web_vitals_spans,
+	"analytics-custom-events": TABLE_NAMES.custom_events,
+	"analytics-ai-call-spans": TABLE_NAMES.ai_call_spans,
+	"analytics-ai-traffic-spans": TABLE_NAMES.ai_traffic_spans,
+};
 
-function getDefaultProducer(): EventProducer {
-	if (!defaultProducer) {
-		defaultProducer = new EventProducer(defaultConfig, {
+let fx: ReturnType<typeof makeProducerEffects> | null = null;
+
+const ProducerLive = Layer.scopedDiscard(
+	Effect.gen(function* () {
+		const ref = yield* Ref.make<ProducerState>({ ...INITIAL_STATE });
+		const effects = makeProducerEffects(
+			CONFIG,
+			initializeKafka(CONFIG),
 			clickHouse,
-			topicMap: {
-				"analytics-events": TABLE_NAMES.events,
-				"analytics-outgoing-links": TABLE_NAMES.outgoing_links,
-				"analytics-error-spans": TABLE_NAMES.error_spans,
-				"analytics-vitals-spans": TABLE_NAMES.web_vitals_spans,
-				"analytics-custom-events": TABLE_NAMES.custom_events,
-				"analytics-ai-call-spans": TABLE_NAMES.ai_call_spans,
-				"analytics-ai-traffic-spans": TABLE_NAMES.ai_traffic_spans,
-			},
-		});
-	}
-	return defaultProducer;
-}
+			TOPIC_MAP,
+			ref
+		);
+		fx = effects;
+		yield* effects.flush.pipe(
+			Effect.catchAll(() => Effect.void),
+			Effect.repeat(Schedule.spaced(CONFIG.bufferInterval)),
+			Effect.forkScoped
+		);
+	})
+);
 
-export const sendEvent = (
-	topic: string,
-	event: unknown,
-	key?: string
-): void => {
-	getDefaultProducer().sendEvent(topic, event, key);
-};
+const runtime = ManagedRuntime.make(ProducerLive);
 
-export const sendEventSync = async (
-	topic: string,
-	event: unknown,
-	key?: string
-): Promise<void> => {
-	await getDefaultProducer().sendEventSync(topic, event, key);
-};
+const withFx = <A, E>(
+	fn: (f: NonNullable<typeof fx>) => Effect.Effect<A, E>
+): Effect.Effect<A | void, E> =>
+	Effect.suspend(() => (fx ? fn(fx) : Effect.void));
 
-export const sendEventBatch = async (
-	topic: string,
-	events: unknown[]
-): Promise<void> => {
-	await getDefaultProducer().sendEventBatch(topic, events);
-};
+export const send = (topic: string, event: unknown, key?: string) =>
+	withFx((f) => f.sendOne(topic, event, key));
 
-export const disconnectProducer = async (): Promise<void> => {
-	if (defaultProducer) {
-		await defaultProducer.disconnect();
-	}
-};
+export const sendBatch = (topic: string, events: unknown[]) =>
+	withFx((f) => f.sendMany(topic, events));
 
-export const getProducerStats = () => getDefaultProducer().getStats();
+export const disconnect = withFx((f) => f.shutDown);
+
+export const getStats = withFx((f) => f.stats);
+
+export const runFork = <A, E>(effect: Effect.Effect<A, E>) =>
+	runtime.runFork(effect);
+
+export const runPromise = <A, E>(effect: Effect.Effect<A, E>) =>
+	runtime.runPromise(effect);
+
+export const disposeRuntime = () => runtime.dispose();

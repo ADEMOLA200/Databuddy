@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type {
 	AICallSpan,
 	AnalyticsEvent,
@@ -7,9 +6,9 @@ import type {
 	WebVitalsSpan,
 } from "@databuddy/db";
 import type { ErrorSpan, IndividualVital } from "@databuddy/validation";
-import { sendEvent, sendEventBatch } from "@lib/producer";
+import { runFork, runPromise, send, sendBatch } from "@lib/producer";
 import { checkDuplicate, getDailySalt, saltAnonymousId } from "@lib/security";
-import { captureError, record } from "@lib/tracing";
+import { record } from "@lib/tracing";
 import { getGeo } from "@utils/ip-geo";
 import { parseUserAgent } from "@utils/user-agent";
 import {
@@ -18,6 +17,7 @@ import {
 	validatePerformanceMetric,
 	validateSessionId,
 } from "@utils/validation";
+import { randomUUIDv7 } from "bun";
 import { useLogger } from "evlog/elysia";
 
 /**
@@ -38,7 +38,7 @@ export function insertTrackEvent(
 		);
 
 		if (!eventId) {
-			eventId = randomUUID();
+			eventId = randomUUIDv7();
 		}
 
 		const [isDuplicate, geoData, salt] = await Promise.all([
@@ -81,7 +81,7 @@ export function insertTrackEvent(
 		const now = Date.now();
 
 		const trackEvent: AnalyticsEvent = {
-			id: randomUUID(),
+			id: randomUUIDv7(),
 			client_id: clientId,
 			event_name: sanitizeString(
 				trackData.name,
@@ -160,11 +160,7 @@ export function insertTrackEvent(
 			created_at: now,
 		};
 
-		try {
-			sendEvent("analytics-events", trackEvent);
-		} catch (error) {
-			captureError(error, { eventId });
-		}
+		runFork(send("analytics-events", trackEvent));
 	});
 }
 
@@ -185,7 +181,7 @@ export function insertOutgoingLink(
 		);
 
 		if (!eventId) {
-			eventId = randomUUID();
+			eventId = randomUUIDv7();
 		}
 
 		if (await checkDuplicate(eventId, "outgoing_link")) {
@@ -205,7 +201,7 @@ export function insertOutgoingLink(
 		);
 
 		const outgoingLinkEvent: CustomOutgoingLink = {
-			id: randomUUID(),
+			id: randomUUIDv7(),
 			client_id: clientId,
 			anonymous_id: rawId ? saltAnonymousId(rawId, salt) : rawId,
 			session_id: validateSessionId(linkData.sessionId),
@@ -218,11 +214,7 @@ export function insertOutgoingLink(
 				typeof linkData.timestamp === "number" ? linkData.timestamp : now,
 		};
 
-		try {
-			sendEvent("analytics-outgoing-links", outgoingLinkEvent);
-		} catch (error) {
-			captureError(error, { eventId });
-		}
+		runFork(send("analytics-outgoing-links", outgoingLinkEvent));
 	});
 }
 
@@ -234,11 +226,7 @@ export function insertTrackEventsBatch(
 			return;
 		}
 
-		try {
-			await sendEventBatch("analytics-events", events);
-		} catch (error) {
-			captureError(error, { count: events.length });
-		}
+		await runPromise(sendBatch("analytics-events", events));
 	});
 }
 
@@ -286,11 +274,7 @@ export function insertErrorSpans(
 			};
 		});
 
-		try {
-			await sendEventBatch("analytics-error-spans", spans);
-		} catch (error) {
-			captureError(error, { count: spans.length });
-		}
+		await runPromise(sendBatch("analytics-error-spans", spans));
 	});
 }
 
@@ -325,11 +309,7 @@ export function insertIndividualVitals(
 			};
 		});
 
-		try {
-			await sendEventBatch("analytics-vitals-spans", spans);
-		} catch (error) {
-			captureError(error, { count: spans.length });
-		}
+		await runPromise(sendBatch("analytics-vitals-spans", spans));
 	});
 }
 
@@ -341,11 +321,7 @@ export function insertOutgoingLinksBatch(
 			return;
 		}
 
-		try {
-			await sendEventBatch("analytics-outgoing-links", events);
-		} catch (error) {
-			captureError(error, { count: events.length });
-		}
+		await runPromise(sendBatch("analytics-outgoing-links", events));
 	});
 }
 
@@ -415,11 +391,7 @@ export function insertAICallSpans(
 			error_stack: call.error_stack,
 		}));
 
-		try {
-			await sendEventBatch("analytics-ai-call-spans", spans);
-		} catch (error) {
-			captureError(error, { count: spans.length });
-		}
+		await runPromise(sendBatch("analytics-ai-call-spans", spans));
 	});
 }
 
@@ -490,10 +462,6 @@ export function insertCustomEvents(
 			};
 		});
 
-		try {
-			await sendEventBatch("analytics-custom-events", spans);
-		} catch (error) {
-			captureError(error, { count: spans.length });
-		}
+		await runPromise(sendBatch("analytics-custom-events", spans));
 	});
 }

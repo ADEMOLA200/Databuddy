@@ -6,7 +6,7 @@ import {
 } from "@hooks/auth";
 import { checkAutumnUsage } from "@lib/billing";
 import { logBlockedTraffic } from "@lib/blocked-traffic";
-import { sendEvent } from "@lib/producer";
+import { runFork, send } from "@lib/producer";
 import { basketErrors } from "@lib/structured-errors";
 import { record } from "@lib/tracing";
 import { extractIpFromRequest } from "@utils/ip-geo";
@@ -293,16 +293,18 @@ export function checkForBot(
 				request.headers.get("referer") ||
 				undefined;
 
-			sendEvent("analytics-ai-traffic-spans", {
-				client_id: clientId,
-				timestamp: Date.now(),
-				bot_type: result?.category || "unknown",
-				bot_name: botCheck.botName || "unknown",
-				user_agent: userAgent,
-				path,
-				referrer,
-				action: "tracked",
-			});
+			runFork(
+				send("analytics-ai-traffic-spans", {
+					client_id: clientId,
+					timestamp: Date.now(),
+					bot_type: result?.category || "unknown",
+					bot_name: botCheck.botName || "unknown",
+					user_agent: userAgent,
+					path,
+					referrer,
+					action: "tracked",
+				})
+			);
 
 			return {
 				error: new Response(JSON.stringify({ status: "ignored" }), {
