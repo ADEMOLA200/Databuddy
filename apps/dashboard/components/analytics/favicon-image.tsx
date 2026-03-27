@@ -15,9 +15,6 @@ interface FaviconImageProps {
 const hostnameRegex = /^https?:\/\//;
 const wwwRegex = /^www\./;
 
-/**
- * Maps CDN/plugin domains to their canonical brand domains for favicon lookup
- */
 const FAVICON_DOMAIN_MAP: Record<string, string> = {
 	"framercdn.com": "framer.com",
 	"plugins.framercdn.com": "framer.com",
@@ -30,6 +27,10 @@ const FAVICON_DOMAIN_MAP: Record<string, string> = {
 	"checkout.stripe.com": "stripe.com",
 	"billing.stripe.com": "stripe.com",
 	"invoice.stripe.com": "stripe.com",
+	"googleadservices.com": "ads.google.com",
+	"googleads.g.doubleclick.net": "ads.google.com",
+	"syndicatedsearch.goog": "ads.google.com",
+	"googlesyndication.com": "ads.google.com",
 };
 
 function getFaviconDomain(hostname: string): string {
