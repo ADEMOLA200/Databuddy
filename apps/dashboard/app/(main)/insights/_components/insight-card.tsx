@@ -37,6 +37,10 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+	changePercentChipClassName,
+	formatSignedChangePercent,
+} from "@/lib/insight-signal-key";
 import type {
 	Insight,
 	InsightSentiment,
@@ -132,10 +136,8 @@ function buildDiagnosticPrompt(insight: Insight): string {
 		`Context: ${insight.description}`,
 	];
 
-	if (insight.changePercent !== undefined && insight.changePercent > 0) {
-		parts.push(
-			`Change: ${insight.sentiment === "negative" ? "-" : "+"}${insight.changePercent}%`
-		);
+	if (insight.changePercent !== undefined && insight.changePercent !== 0) {
+		parts.push(`Change: ${formatSignedChangePercent(insight.changePercent)}`);
 	}
 
 	const windowLine = formatComparisonWindow(insight);
@@ -287,19 +289,16 @@ export function InsightCard({
 						<span className="text-muted-foreground/30">&middot;</span>
 						<span className={sentimentStyle.color}>{sentimentStyle.label}</span>
 						{insight.changePercent !== undefined &&
-							insight.changePercent > 0 && (
+							insight.changePercent !== 0 && (
 								<>
 									<span className="text-muted-foreground/30">&middot;</span>
 									<span
 										className={cn(
 											"tabular-nums",
-											insight.sentiment === "negative"
-												? "text-red-500"
-												: "text-emerald-600"
+											changePercentChipClassName(insight.changePercent)
 										)}
 									>
-										{insight.sentiment === "negative" ? "-" : "+"}
-										{insight.changePercent}%
+										{formatSignedChangePercent(insight.changePercent)}
 									</span>
 								</>
 							)}

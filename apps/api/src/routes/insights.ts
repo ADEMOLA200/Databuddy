@@ -14,12 +14,14 @@ import {
 	websites,
 } from "@databuddy/db";
 import { getRedisCache } from "@databuddy/redis";
-import { generateText, Output } from "ai";
+import { generateText, Output, stepCountIs, ToolLoopAgent } from "ai";
 import dayjs from "dayjs";
 import { Elysia, t } from "elysia";
 import { useLogger } from "evlog/elysia";
-import { z } from "zod";
 import { models } from "../ai/config/models";
+import type { ParsedInsight } from "../ai/schemas/smart-insights-output";
+import { insightsOutputSchema } from "../ai/schemas/smart-insights-output";
+import { createInsightsAgentTools } from "../ai/tools/insights-agent-tools";
 import { storeAnalyticsSummary } from "../lib/supermemory";
 import { mergeWideEvent } from "../lib/tracing";
 import { executeQuery } from "../query";
@@ -27,6 +29,8 @@ import { executeQuery } from "../query";
 const CACHE_TTL = 900;
 const CACHE_KEY_PREFIX = "ai-insights";
 const TIMEOUT_MS = 60_000;
+const INSIGHTS_AGENT_MAX_STEPS = 24;
+const INSIGHTS_AGENT_TIMEOUT_MS = 120_000;
 const QUERY_FETCH_TIMEOUT_MS = 45_000;
 const MAX_WEBSITES = 5;
 const CONCURRENCY = 3;
@@ -40,67 +44,6 @@ const LETTER_CLASS = /[a-zA-Z]/;
 const LOWER_CLASS = /[a-z]/;
 const UPPER_CLASS = /[A-Z]/;
 const DASH_UNDERSCORE_SPLIT = /[-_]/g;
-
-const insightSchema = z.object({
-	title: z
-		.string()
-		.describe(
-			"Brief headline under 60 chars with the key number. Never paste raw URL paths that contain opaque ID segments (long random slugs). Use human labels from Top Pages 'Human label' (e.g. 'Demo page', 'Pricing page', 'Home') instead of paths like /demo/xYz12…"
-		),
-	description: z
-		.string()
-		.describe(
-			"2-4 complete sentences with specific numbers from BOTH periods; end with a full stop. Do not truncate mid-sentence or end with '...'. Name pages using human labels when the path has opaque IDs. Explain cause only when grounded in the data or annotations."
-		),
-	suggestion: z
-		.string()
-		.describe(
-			"One or two sentences tied to THIS product's data only: cite concrete figures already in the summary, pages, errors, or referrers (e.g. two page paths, two visitor counts, or bounce/session metrics from the data). Do not give generic marketing platitudes or hypothetical tactics; if you recommend a CTA or experiment, anchor it to numbers you stated above. Bad: vague 'social proof' or 'limited-time offer' without data. Good: references actual pageviews, visitors, or rates from the prompt."
-		),
-	severity: z.enum(["critical", "warning", "info"]),
-	sentiment: z
-		.enum(["positive", "neutral", "negative"])
-		.describe(
-			"positive = improving metric, neutral = stable, negative = declining or broken"
-		),
-	priority: z
-		.number()
-		.min(1)
-		.max(10)
-		.describe(
-			"1-10 from actionability × business impact, NOT raw % magnitude. User-facing errors, conversion/session drops, or reliability issues outrank vanity traffic spikes. A 5% drop in a meaningful engagement metric can score higher than a 70% visitor increase with no conversion context. Reserve 8-10 for issues that hurt users or revenue signals in the data."
-		),
-	type: z.enum([
-		"error_spike",
-		"new_errors",
-		"vitals_degraded",
-		"custom_event_spike",
-		"traffic_drop",
-		"traffic_spike",
-		"bounce_rate_change",
-		"engagement_change",
-		"referrer_change",
-		"page_trend",
-		"positive_trend",
-		"performance",
-		"uptime_issue",
-	]),
-	changePercent: z
-		.number()
-		.optional()
-		.describe("Percentage change between periods, e.g. -15.5 for a 15.5% drop"),
-});
-
-const insightsOutputSchema = z.object({
-	insights: z
-		.array(insightSchema)
-		.max(3)
-		.describe(
-			"1-3 insights ranked by actionability × business impact. When the week is mostly positive, at least one insight MUST still call out a material risk or watch (e.g. session duration down, bounce up, single-channel dependency, volatile referrer, error count up in absolute terms) if those signals appear in the data—do not only celebrate wins. Skip repeating a narrative already listed under recently reported insights unless the change is materially new."
-		),
-});
-
-type ParsedInsight = z.infer<typeof insightSchema>;
 
 interface WebsiteInsight extends ParsedInsight {
 	id: string;
@@ -120,6 +63,9 @@ interface PeriodData {
 	topPages: Record<string, unknown>[];
 	errorSummary: Record<string, unknown>[];
 	topReferrers: Record<string, unknown>[];
+	countries: Record<string, unknown>[];
+	browsers: Record<string, unknown>[];
+	vitalsOverview: Record<string, unknown>[];
 }
 
 interface WeekOverWeekPeriod {
@@ -260,12 +206,13 @@ function insightDedupeKey(
 	return `${websiteId}|${type}|${dir}`;
 }
 
-async function fetchInsightDedupeKeys(
+async function fetchInsightDedupeKeyToIdMap(
 	organizationId: string
-): Promise<Set<string>> {
+): Promise<Map<string, string>> {
 	const cutoff = dayjs().subtract(GENERATION_COOLDOWN_HOURS, "hour").toDate();
 	const rows = await db
 		.select({
+			id: analyticsInsights.id,
 			websiteId: analyticsInsights.websiteId,
 			type: analyticsInsights.type,
 			sentiment: analyticsInsights.sentiment,
@@ -277,19 +224,21 @@ async function fetchInsightDedupeKeys(
 				eq(analyticsInsights.organizationId, organizationId),
 				gte(analyticsInsights.createdAt, cutoff)
 			)
-		);
-	const keys = new Set<string>();
+		)
+		.orderBy(desc(analyticsInsights.createdAt));
+	const map = new Map<string, string>();
 	for (const r of rows) {
-		keys.add(
-			insightDedupeKey(
-				r.websiteId,
-				r.type as ParsedInsight["type"],
-				r.sentiment as ParsedInsight["sentiment"],
-				r.changePercent
-			)
+		const key = insightDedupeKey(
+			r.websiteId,
+			r.type as ParsedInsight["type"],
+			r.sentiment as ParsedInsight["sentiment"],
+			r.changePercent
 		);
+		if (!map.has(key)) {
+			map.set(key, r.id);
+		}
 	}
-	return keys;
+	return map;
 }
 
 function runQueryWithTimeout<T>(
@@ -344,7 +293,15 @@ async function fetchPeriodData(
 		}
 	};
 
-	const [summary, topPages, errorSummary, topReferrers] = await Promise.all([
+	const [
+		summary,
+		topPages,
+		errorSummary,
+		topReferrers,
+		countries,
+		browsers,
+		vitalsOverview,
+	] = await Promise.all([
 		safe("summary_metrics", () =>
 			executeQuery({ ...base, type: "summary_metrics" }, domain, timezone)
 		),
@@ -361,6 +318,19 @@ async function fetchPeriodData(
 				timezone
 			)
 		),
+		safe("country", () =>
+			executeQuery({ ...base, type: "country", limit: 8 }, domain, timezone)
+		),
+		safe("browser_name", () =>
+			executeQuery(
+				{ ...base, type: "browser_name", limit: 8 },
+				domain,
+				timezone
+			)
+		),
+		safe("vitals_overview", () =>
+			executeQuery({ ...base, type: "vitals_overview" }, domain, timezone)
+		),
 	]);
 
 	return {
@@ -368,7 +338,40 @@ async function fetchPeriodData(
 		topPages,
 		errorSummary,
 		topReferrers,
+		countries,
+		browsers,
+		vitalsOverview,
 	};
+}
+
+async function checkHasInsightData(
+	websiteId: string,
+	domain: string,
+	from: string,
+	to: string,
+	timezone: string
+): Promise<boolean> {
+	const base = { projectId: websiteId, from, to, timezone };
+	const safe = async (
+		label: string,
+		run: () => Promise<Record<string, unknown>[]>
+	): Promise<Record<string, unknown>[]> => {
+		try {
+			const value = await runQueryWithTimeout(label, run);
+			return Array.isArray(value) ? value : [];
+		} catch {
+			return [];
+		}
+	};
+	const [summary, topPages] = await Promise.all([
+		safe("summary_metrics", () =>
+			executeQuery({ ...base, type: "summary_metrics" }, domain, timezone)
+		),
+		safe("top_pages", () =>
+			executeQuery({ ...base, type: "top_pages", limit: 1 }, domain, timezone)
+		),
+	]);
+	return summary.length > 0 || topPages.length > 0;
 }
 
 function formatDataForPrompt(
@@ -392,6 +395,22 @@ function formatDataForPrompt(
 	if (current.topReferrers.length > 0) {
 		sections.push(formatRowsBlock(current.topReferrers, "Top Referrers"));
 	}
+	if (current.countries.length > 0) {
+		sections.push(
+			formatRowsBlock(current.countries, "Countries (by visitors)")
+		);
+	}
+	if (current.browsers.length > 0) {
+		sections.push(formatRowsBlock(current.browsers, "Browsers (by visitors)"));
+	}
+	if (current.vitalsOverview.length > 0) {
+		sections.push(
+			formatRowsBlock(
+				current.vitalsOverview,
+				"Web Vitals (p75 and samples; use for performance insights when samples are meaningful)"
+			)
+		);
+	}
 
 	sections.push(
 		`\n## Previous Period (${previousRange.from} to ${previousRange.to})`
@@ -405,6 +424,22 @@ function formatDataForPrompt(
 	}
 	if (previous.topReferrers.length > 0) {
 		sections.push(formatRowsBlock(previous.topReferrers, "Top Referrers"));
+	}
+	if (previous.countries.length > 0) {
+		sections.push(
+			formatRowsBlock(previous.countries, "Countries (by visitors)")
+		);
+	}
+	if (previous.browsers.length > 0) {
+		sections.push(formatRowsBlock(previous.browsers, "Browsers (by visitors)"));
+	}
+	if (previous.vitalsOverview.length > 0) {
+		sections.push(
+			formatRowsBlock(
+				previous.vitalsOverview,
+				"Web Vitals (p75 and samples; use for performance insights when samples are meaningful)"
+			)
+		);
 	}
 
 	return sections.filter(Boolean).join("\n\n");
@@ -522,12 +557,18 @@ Anti-redundancy:
 - If the user message includes a "Recently reported insights" section, treat those as already surfaced. Do NOT output a new insight that tells the same story (same underlying signal and direction) unless the narrative would be materially different (e.g. new root cause, reversal, or threshold crossed). Prefer novel angles or omit.
 
 Data boundaries:
-- Only use metrics present in the summary, pages, errors, and referrers sections. Do not invent funnel conversion rates, MRR, revenue, cohort retention, or signup counts unless they appear in the data.
+- Only use metrics returned from your insight_query tool results (and annotations / recently reported insights in the user message). Do not invent funnel conversion rates, MRR, revenue, cohort retention, or signup counts unless they appear in the data.
 - If conversion or goal data appears in summary_metrics, you may connect traffic to outcomes. If absent, do not fabricate funnel or revenue insights.
 
 Multi-property organizations:
 - When the user message includes "Organization websites", each bullet is a separate site in the same account. Titles and descriptions MUST name which property (domain or product label from the list) the insight applies to—do not assume the reader knows which site is "app" vs marketing.
 - Referrers that appear as another domain in that list are cross-site traffic: explain the relationship (e.g. www → app) instead of treating them like generic external referrers.
+
+Cross-dimension depth (when Countries, Browsers, or Web Vitals sections appear):
+- Prefer at least one insight that connects two data domains when the numbers support it (e.g. summary traffic trend + a major country or browser share shift; or bounce/session signals + a vitals regression). Single-metric stories are fine when nothing else stands out.
+- For geography: compare week-over-week visitor share or rank changes for named countries—call out a country that moved materially even if sitewide traffic looks flat.
+- For browsers: note a browser gaining or losing meaningful share of visitors; relate to errors or vitals only when those sections align.
+- For Web Vitals: use metric rows with non-trivial sample counts. Compare p75 between periods for LCP, INP, CLS, FCP when present. Tie performance language to user impact (load responsiveness, layout stability)—do not invent vitals that are missing from the data.
 
 Suggestion field (required quality):
 - Must answer "what should we do next?" in one or two sentences grounded in the actual metrics shown (repeat or reference specific counts, rates, or page labels from the data). This is an analytics product—avoid generic marketing coaching ("social proof", "limited-time offer") unless you tie it to a concrete gap in the numbers (e.g. two paths' visitor counts, bounce rate, session duration).
@@ -546,37 +587,36 @@ Rules:
 - If everything is stable, return ONE positive/neutral insight (e.g. "Steady at 2,400 weekly visitors") with a light suggestion if appropriate.
 - Never fabricate or round numbers beyond what's in the data`;
 
-async function analyzeWebsite(
+async function analyzeWebsiteLegacy(
 	organizationId: string,
 	userId: string,
 	websiteId: string,
 	domain: string,
 	timezone: string,
 	period: WeekOverWeekPeriod,
-	orgSites: OrgWebsiteRow[]
+	orgSites: OrgWebsiteRow[],
+	annotationContext: string,
+	recentInsightsBlock: string
 ): Promise<ParsedInsight[]> {
 	const currentRange = period.current;
 	const previousRange = period.previous;
 
-	const [current, previous, annotationContext, recentInsightsBlock] =
-		await Promise.all([
-			fetchPeriodData(
-				websiteId,
-				domain,
-				currentRange.from,
-				currentRange.to,
-				timezone
-			),
-			fetchPeriodData(
-				websiteId,
-				domain,
-				previousRange.from,
-				previousRange.to,
-				timezone
-			),
-			fetchRecentAnnotations(websiteId),
-			fetchRecentInsightsForPrompt(organizationId, websiteId),
-		]);
+	const [current, previous] = await Promise.all([
+		fetchPeriodData(
+			websiteId,
+			domain,
+			currentRange.from,
+			currentRange.to,
+			timezone
+		),
+		fetchPeriodData(
+			websiteId,
+			domain,
+			previousRange.from,
+			previousRange.to,
+			timezone
+		),
+	]);
 
 	const hasData = current.summary.length > 0 || current.topPages.length > 0;
 	if (!hasData) {
@@ -608,6 +648,7 @@ async function analyzeWebsite(
 				metadata: {
 					source: "insights",
 					feature: "smart_insights",
+					mode: "legacy_fallback",
 					organizationId,
 					userId,
 					websiteId,
@@ -618,7 +659,7 @@ async function analyzeWebsite(
 		});
 
 		if (!result.output) {
-			useLogger().warn("No structured output from insights model", {
+			useLogger().warn("No structured output from insights model (legacy)", {
 				insights: { websiteId },
 			});
 			return [];
@@ -626,11 +667,120 @@ async function analyzeWebsite(
 
 		return result.output.insights;
 	} catch (error) {
-		useLogger().warn("Failed to generate insights", {
+		useLogger().warn("Failed to generate insights (legacy)", {
 			insights: { websiteId, error },
 		});
 		return [];
 	}
+}
+
+async function analyzeWebsite(
+	organizationId: string,
+	userId: string,
+	websiteId: string,
+	domain: string,
+	timezone: string,
+	period: WeekOverWeekPeriod,
+	orgSites: OrgWebsiteRow[]
+): Promise<ParsedInsight[]> {
+	const currentRange = period.current;
+	const previousRange = period.previous;
+
+	const hasData = await checkHasInsightData(
+		websiteId,
+		domain,
+		currentRange.from,
+		currentRange.to,
+		timezone
+	);
+	if (!hasData) {
+		return [];
+	}
+
+	const [annotationContext, recentInsightsBlock] = await Promise.all([
+		fetchRecentAnnotations(websiteId),
+		fetchRecentInsightsForPrompt(organizationId, websiteId),
+	]);
+
+	const orgContext = formatOrgWebsitesContext(orgSites, websiteId);
+	const userPrompt = `Analyze this website's week-over-week data and produce insights.
+
+**Current period:** ${currentRange.from} to ${currentRange.to}
+**Previous period:** ${previousRange.from} to ${previousRange.to}
+**Timezone:** ${timezone}
+**Domain:** ${domain}
+
+Use insight_query to pull metrics for **both** current and previous periods before inferring trends. When ready, call submit_insights once with 1-3 insights.
+
+${orgContext}${annotationContext}${recentInsightsBlock}`;
+
+	const insightsToolWorkflow = `
+
+## Tool workflow (required)
+1. Start with insight_query for summary_metrics for **both** current and previous periods.
+2. Add top_pages, error_summary, top_referrers, and cross-dimension data (country, browser_name, vitals_overview, custom_events_*) as needed to support conclusions.
+3. When you have concrete week-over-week comparisons grounded in tool results, call **submit_insights** exactly once with 1-3 insights. You must call submit_insights to complete the task.`;
+
+	const { tools, getSubmittedInsights } = createInsightsAgentTools({
+		websiteId,
+		domain,
+		timezone,
+		periodBounds: { current: currentRange, previous: previousRange },
+	});
+
+	try {
+		const agent = new ToolLoopAgent({
+			model: models.analytics,
+			instructions: `${INSIGHTS_SYSTEM_PROMPT}${insightsToolWorkflow}`,
+			tools,
+			stopWhen: stepCountIs(INSIGHTS_AGENT_MAX_STEPS),
+			temperature: 0.2,
+			experimental_telemetry: {
+				isEnabled: true,
+				functionId: "databuddy.insights.analyze_website",
+				metadata: {
+					source: "insights",
+					feature: "smart_insights",
+					mode: "agent",
+					organizationId,
+					userId,
+					websiteId,
+					websiteDomain: domain,
+					timezone,
+				},
+			},
+		});
+
+		await agent.generate({
+			messages: [{ role: "user", content: userPrompt }],
+			abortSignal: AbortSignal.timeout(INSIGHTS_AGENT_TIMEOUT_MS),
+		});
+
+		const submitted = getSubmittedInsights();
+		if (submitted && submitted.length > 0) {
+			return submitted;
+		}
+
+		useLogger().warn("Insights agent finished without submit_insights", {
+			insights: { websiteId },
+		});
+	} catch (error) {
+		useLogger().warn("Insights agent failed, using legacy fallback", {
+			insights: { websiteId, error },
+		});
+	}
+
+	return analyzeWebsiteLegacy(
+		organizationId,
+		userId,
+		websiteId,
+		domain,
+		timezone,
+		period,
+		orgSites,
+		annotationContext,
+		recentInsightsBlock
+	);
 }
 
 async function processInBatches<T, R>(
@@ -1031,7 +1181,8 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 
 			try {
 				const period = getWeekOverWeekPeriod();
-				const dedupeKeys = await fetchInsightDedupeKeys(organizationId);
+				const dedupeKeyToId =
+					await fetchInsightDedupeKeyToIdMap(organizationId);
 				const groups = await processInBatches(
 					orgSites.slice(0, MAX_WEBSITES),
 					async (site: { id: string; name: string | null; domain: string }) => {
@@ -1059,7 +1210,7 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 				);
 
 				const merged = groups.flat().sort((a, b) => b.priority - a.priority);
-				const seen = new Set(dedupeKeys);
+				const seenInBatch = new Set<string>();
 				const sorted: WebsiteInsight[] = [];
 				for (const insight of merged) {
 					const key = insightDedupeKey(
@@ -1068,11 +1219,16 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 						insight.sentiment,
 						insight.changePercent ?? null
 					);
-					if (seen.has(key)) {
+					if (seenInBatch.has(key)) {
 						continue;
 					}
-					seen.add(key);
-					sorted.push(insight);
+					seenInBatch.add(key);
+					const existingId = dedupeKeyToId.get(key);
+					if (existingId) {
+						sorted.push({ ...insight, id: existingId });
+					} else {
+						sorted.push(insight);
+					}
 					if (sorted.length >= 10) {
 						break;
 					}
@@ -1081,28 +1237,100 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 				const runId = crypto.randomUUID();
 				let finalInsights: WebsiteInsight[] = sorted;
 				if (sorted.length > 0) {
-					const rows = sorted.map((insight) => ({
-						id: insight.id,
-						organizationId,
-						websiteId: insight.websiteId,
+					const toInsert: {
+						id: string;
+						organizationId: string;
+						websiteId: string;
+						runId: string;
+						title: string;
+						description: string;
+						suggestion: string;
+						severity: string;
+						sentiment: string;
+						type: string;
+						priority: number;
+						changePercent: number | null;
+						timezone: string;
+						currentPeriodFrom: string;
+						currentPeriodTo: string;
+						previousPeriodFrom: string;
+						previousPeriodTo: string;
+					}[] = [];
+
+					for (const insight of sorted) {
+						const key = insightDedupeKey(
+							insight.websiteId,
+							insight.type,
+							insight.sentiment,
+							insight.changePercent ?? null
+						);
+						const existingId = dedupeKeyToId.get(key);
+						if (existingId && insight.id === existingId) {
+							continue;
+						}
+						toInsert.push({
+							id: insight.id,
+							organizationId,
+							websiteId: insight.websiteId,
+							runId,
+							title: insight.title,
+							description: insight.description,
+							suggestion: insight.suggestion,
+							severity: insight.severity,
+							sentiment: insight.sentiment,
+							type: insight.type,
+							priority: insight.priority,
+							changePercent: insight.changePercent ?? null,
+							timezone,
+							currentPeriodFrom: period.current.from,
+							currentPeriodTo: period.current.to,
+							previousPeriodFrom: period.previous.from,
+							previousPeriodTo: period.previous.to,
+						});
+					}
+
+					const updatePayload = {
 						runId,
-						title: insight.title,
-						description: insight.description,
-						suggestion: insight.suggestion,
-						severity: insight.severity,
-						sentiment: insight.sentiment,
-						type: insight.type,
-						priority: insight.priority,
-						changePercent: insight.changePercent ?? null,
 						timezone,
 						currentPeriodFrom: period.current.from,
 						currentPeriodTo: period.current.to,
 						previousPeriodFrom: period.previous.from,
 						previousPeriodTo: period.previous.to,
-					}));
+						createdAt: new Date(),
+					};
 
 					try {
-						await db.insert(analyticsInsights).values(rows);
+						if (toInsert.length > 0) {
+							await db.insert(analyticsInsights).values(toInsert);
+						}
+						const toRefresh = sorted.filter((insight) => {
+							const key = insightDedupeKey(
+								insight.websiteId,
+								insight.type,
+								insight.sentiment,
+								insight.changePercent ?? null
+							);
+							const existingId = dedupeKeyToId.get(key);
+							return existingId !== undefined && insight.id === existingId;
+						});
+						await Promise.all(
+							toRefresh.map((insight) =>
+								db
+									.update(analyticsInsights)
+									.set({
+										...updatePayload,
+										title: insight.title,
+										description: insight.description,
+										suggestion: insight.suggestion,
+										severity: insight.severity,
+										sentiment: insight.sentiment,
+										type: insight.type,
+										priority: insight.priority,
+										changePercent: insight.changePercent ?? null,
+									})
+									.where(eq(analyticsInsights.id, insight.id))
+							)
+						);
 					} catch (error) {
 						useLogger().warn("Failed to persist analytics insights", {
 							insights: { organizationId, error },

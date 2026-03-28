@@ -1,0 +1,33 @@
+---
+description: Design system basics and living patterns; agents extend this file when UI conventions stabilize. Use with ui-guidelines for all UI work.
+alwaysApply: false
+---
+
+# Design system (starter)
+
+This file is **intentionally small**. It grows as we lock patterns. **Interaction, motion, a11y, and hard constraints** stay in `.cursor/rules/ui-guidelines.mdc` and `.cursor/rules/01-MUST-DO.mdc`—follow those first.
+
+## Foundations
+
+- **Contrast:** In `apps/dashboard/app/globals.css`, **`muted-foreground`** and **`secondary-foreground`** (dark) are tuned so secondary copy on fills meets **WCAG 2.1 AA** for normal text. **`--border`** stays **subtle** on purpose (light dividers, not high-chroma edges); do not darken it for “contrast” without review—prefer spacing, surface, or focus rings. New semantic colors: verify with a checker (e.g. WebAIM) before shipping.
+- **Surfaces:** Prefer theme / Tailwind tokens; one accent per view; no new gradients unless explicitly requested (see ui-guidelines).
+- **Radius:** `rounded` only (per project MUST-DO).
+- **Spacing:** Default Tailwind scale; avoid arbitrary spacing unless there is a clear, reusable reason.
+- **Typography:** Headings `text-balance`, body `text-pretty`, numeric data `tabular-nums` (see ui-guidelines).
+- **Primitives:** Use existing app primitives (Base UI / Radix / project components) before inventing new ones (see ui-guidelines).
+
+## Where patterns live
+
+- Dashboard UI: `apps/dashboard/` (components co-located with features unless shared).
+- Shared primitives: existing `@/components/ui` and layout folders—reuse before adding parallel systems.
+
+## Maintaining this rule (required)
+
+When a **reusable** visual or structural pattern is agreed on (new layout, token usage, component family, or naming), **update this file in the same change** when practical:
+
+- Add **one short bullet** under the right section (or a new `##` if needed).
+- Optionally point to a **canonical file path** so future work copies the same source.
+- If **iza** or review sets or corrects a design direction, **reflect it here** so the next session stays aligned.
+- **Do not** duplicate long lists from `ui-guidelines.mdc`—reference it and record only **Databuddy-specific** decisions that are not already stated there.
+
+Goal: this file stays the **lightweight index** of “how we build” so agents and humans stay consistent as the product grows.

@@ -61,6 +61,8 @@ Read [codebase-map.md](./references/codebase-map.md) when you need deeper routin
 ### Dashboard work
 
 - Start in `apps/dashboard`
+- Insights merged feed (`use-insights-feed`) collapses history + AI by `insightSignalDedupeKey` in `apps/dashboard/lib/insight-signal-key.ts` so the list is one row per signal (latest wins).
+- Theme: `apps/dashboard/app/globals.css`. **`--border` is intentionally subtle**; do not crank it darker for “contrast” unless **iza** asks—prefer text tokens or layout for readability.
 - For data loading and mutations, inspect `apps/dashboard/lib/orpc.ts` and the corresponding hooks/components
 - Many changes require matching edits in `packages/rpc`
 
@@ -69,6 +71,7 @@ Read [codebase-map.md](./references/codebase-map.md) when you need deeper routin
 - Start in `apps/api/src`
 - Shared API contracts and procedure logic live in `packages/rpc`
 - Prefer changing shared router logic in `packages/rpc` rather than duplicating validation in the dashboard
+- Analytics AI insights: `apps/api/src/routes/insights.ts` — dedupe key is `websiteId|type|direction` (direction from **signed** `changePercent`, not sentiment); within the cooldown window, matching rows are **updated** (same `id`) instead of inserting duplicates. **Do not** show `changePercent` in the UI with sentiment-based sign flips; the stored value is already signed.
 
 ### Ingestion and analytics pipeline
 
@@ -112,3 +115,4 @@ Read [codebase-map.md](./references/codebase-map.md) when you need deeper routin
 - Use `rg "clickHouse|ClickHouse|TABLE_NAMES" packages/db apps/basket apps/api`
 - Use `rg "betterAuth|drizzleAdapter|organization" packages/auth packages/rpc apps/dashboard`
 - Use `rg "trackRoute|basketRouter|llmRouter|structured-errors" apps/basket`
+- Use `rg "insightDedupeKey|collapseInsightsBySignal|insightSignalDedupeKey" apps/api apps/dashboard`

@@ -107,7 +107,6 @@ const rpcHandler = new RPCHandler(appRouter, {
 	],
 });
 
-/** Routers excluded from generated OpenAPI (still on `appRouter`; internal or not for public REST docs). */
 const HIDDEN_FROM_DOCS = ["revenue", "uptime", "billing"] as const;
 const docsRouter = Object.fromEntries(
 	Object.entries(appRouter).filter(

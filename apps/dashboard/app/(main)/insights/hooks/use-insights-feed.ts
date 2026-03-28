@@ -15,6 +15,7 @@ import {
 	INSIGHT_QUERY_KEYS,
 	type InsightsHistoryPage,
 } from "@/lib/insight-api";
+import { collapseInsightsBySignal } from "@/lib/insight-signal-key";
 import type { Insight } from "@/lib/insight-types";
 import { mapHistoryRowToInsight } from "@/lib/insight-types";
 
@@ -102,7 +103,8 @@ export function useInsightsFeed() {
 			})
 		);
 		const pages = historyInfinite.data?.pages ?? [];
-		return mergeAiWithHistoryPages(fresh, pages);
+		const merged = mergeAiWithHistoryPages(fresh, pages);
+		return collapseInsightsBySignal(merged);
 	}, [aiQuery.data?.insights, historyInfinite.data?.pages]);
 
 	const refetchAll = useCallback(async () => {
@@ -120,8 +122,8 @@ export function useInsightsFeed() {
 		isOrgContextLoading ||
 		Boolean(
 			orgId &&
-				!(historyInfinite.isFetched && aiQuery.isFetched) &&
-				!(historyInfinite.isError && aiQuery.isError)
+			!(historyInfinite.isFetched && aiQuery.isFetched) &&
+			!(historyInfinite.isError && aiQuery.isError)
 		);
 
 	const isError =

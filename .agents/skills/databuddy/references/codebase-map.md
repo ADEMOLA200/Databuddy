@@ -6,6 +6,7 @@ Use this file when the task spans multiple packages or when the right edit locat
 
 ### `apps/dashboard`
 
+- Theme tokens and WCAG-oriented contrast: `apps/dashboard/app/globals.css` (`:root`, `.dark`)
 - Next.js dashboard application
 - Default dev port: `3000`
 - Talks to the backend through oRPC using [`apps/dashboard/lib/orpc.ts`](/Users/iza/Dev/Databuddy/apps/dashboard/lib/orpc.ts)

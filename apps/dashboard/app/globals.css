@@ -401,8 +401,8 @@
 
   --scrollbar-size: 2px;
   --scrollbar-track: transparent;
-  --scrollbar-thumb: #9D9EA6;
-  --scrollbar-thumb-hover: #71727A;
+  --scrollbar-thumb: #9d9ea6;
+  --scrollbar-thumb-hover: #5b5c64;
 
   --focus-ring: 0 0 0 2px var(--ring);
   --focus-ring-offset: 2px;
@@ -429,10 +429,12 @@
   --secondary: #2A2A31;
   --secondary-brighter: #323239;
   --secondary-brightest: #3A3A42;
-  --secondary-foreground: #8B80BF;
+  /* Lighter than legacy #8B80BF: ≥4.5:1 on secondary (WCAG AA body text). */
+  --secondary-foreground: #a89fd4;
 
   --muted: #2A2A31;
-  --muted-foreground: #9D9EA6;
+  /* Lighter than legacy #9D9EA6: ≥4.5:1 on input fills. */
+  --muted-foreground: #a3a4ab;
   --accent: #323239;
   --accent-brighter: #3A3A42;
   --accent-disabled: #3A3A42;
@@ -495,8 +497,8 @@
 
   --scrollbar-size: 2px;
   --scrollbar-track: transparent;
-  --scrollbar-thumb: #4A4A52;
-  --scrollbar-thumb-hover: #71727A;
+  --scrollbar-thumb: #4a4a52;
+  --scrollbar-thumb-hover: #a3a4ab;
 }
 
 /* ==========================================================================
