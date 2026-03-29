@@ -240,13 +240,16 @@ const openApiHandler = new OpenAPIHandler(docsRouter, {
 	],
 });
 
-const app = new Elysia()
+const app = new Elysia({ precompile: true })
 	.use(
 		evlog({
 			enrich: enrichApiWideEvent,
 		})
 	)
 	.onBeforeHandle(async ({ request }) => {
+		if (request.url.includes("/public/v1/flags")) {
+			return;
+		}
 		await applyAuthWideEvent(request.headers);
 	})
 	.use(

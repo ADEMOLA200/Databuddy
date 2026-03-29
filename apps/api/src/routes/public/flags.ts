@@ -2,28 +2,23 @@ import { and, db, eq, flags, isNull, or } from "@databuddy/db";
 import { cacheable } from "@databuddy/redis";
 import { Elysia, t } from "elysia";
 import { useLogger } from "evlog/elysia";
+import { LRUCache } from "lru-cache";
 import { mergeWideEvent } from "@/lib/tracing";
 
-const flagQuerySchema = t.Object({
-	key: t.String(),
-	clientId: t.String(),
-	userId: t.Optional(t.String()),
-	email: t.Optional(t.String()),
-	organizationId: t.Optional(t.String()),
-	teamId: t.Optional(t.String()),
-	properties: t.Optional(t.String()),
-	environment: t.Optional(t.String()),
-});
+const memCache = new LRUCache<string, object>({ max: 500, ttl: 5000 });
 
-const bulkFlagQuerySchema = t.Object({
-	clientId: t.String(),
-	userId: t.Optional(t.String()),
-	email: t.Optional(t.String()),
-	organizationId: t.Optional(t.String()),
-	teamId: t.Optional(t.String()),
-	properties: t.Optional(t.String()),
-	environment: t.Optional(t.String()),
-});
+const NULL_SENTINEL = Object.freeze({ __null: true });
+
+function fromMemory<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+	const cached = memCache.get(key);
+	if (cached !== undefined) {
+		return Promise.resolve((cached === NULL_SENTINEL ? null : cached) as T);
+	}
+	return fetcher().then((data) => {
+		memCache.set(key, (data as object) ?? NULL_SENTINEL);
+		return data;
+	});
+}
 
 interface UserContext {
 	userId?: string;
@@ -65,7 +60,6 @@ interface TargetGroupData {
 	rules: FlagRule[];
 }
 
-/** Flag type for evaluation - includes database fields not in the form schema */
 interface EvaluableFlag {
 	key: string;
 	type: "boolean" | "rollout" | "multivariant";
@@ -79,6 +73,28 @@ interface EvaluableFlag {
 	targetGroupIds?: string[];
 	resolvedTargetGroups?: TargetGroupData[];
 }
+
+const flagQuerySchema = t.Object({
+	key: t.String(),
+	clientId: t.String(),
+	userId: t.Optional(t.String()),
+	email: t.Optional(t.String()),
+	organizationId: t.Optional(t.String()),
+	teamId: t.Optional(t.String()),
+	properties: t.Optional(t.String()),
+	environment: t.Optional(t.String()),
+});
+
+const bulkFlagQuerySchema = t.Object({
+	clientId: t.String(),
+	keys: t.Optional(t.String()),
+	userId: t.Optional(t.String()),
+	email: t.Optional(t.String()),
+	organizationId: t.Optional(t.String()),
+	teamId: t.Optional(t.String()),
+	properties: t.Optional(t.String()),
+	environment: t.Optional(t.String()),
+});
 
 const getCachedFlag = cacheable(
 	async (key: string, clientId: string, environment?: string) => {
@@ -112,7 +128,6 @@ const getCachedFlag = cacheable(
 			return null;
 		}
 
-		// Map the nested relation to a flat array
 		const resolvedTargetGroups: TargetGroupData[] = flag.flagsToTargetGroups
 			.filter((ftg) => ftg.targetGroup && !ftg.targetGroup.deletedAt)
 			.map((ftg) => ({
@@ -160,7 +175,6 @@ const getCachedFlagsForClient = cacheable(
 			},
 		});
 
-		// Map the nested relations to flat arrays
 		return flagsList.map((flag) => {
 			const resolvedTargetGroups: TargetGroupData[] = flag.flagsToTargetGroups
 				.filter((ftg) => ftg.targetGroup && !ftg.targetGroup.deletedAt)
@@ -304,7 +318,6 @@ export function evaluateRule(rule: FlagRule, context: UserContext): boolean {
 		return false;
 	}
 
-	// Regular evaluation
 	switch (rule.type) {
 		case "user_id":
 			return evaluateStringRule(context.userId, rule);
@@ -353,7 +366,6 @@ export function selectVariant(
 		return { value: selected.value, variant: selected.key };
 	}
 
-	// Otherwise use weighted selection (weights may be 0 for some variants)
 	let cumulative = 0;
 	for (const variant of flag.variants) {
 		cumulative += typeof variant.weight === "number" ? variant.weight : 0;
@@ -362,7 +374,6 @@ export function selectVariant(
 		}
 	}
 
-	// If no weighted match, fall back to last variant
 	const lastVariant = flag.variants.at(-1);
 	if (!lastVariant) {
 		return { value: flag.defaultValue, variant: "default" };
@@ -374,7 +385,6 @@ export function evaluateFlag(
 	flag: EvaluableFlag,
 	context: UserContext
 ): FlagResult {
-	// Check direct flag rules first
 	if (flag.rules && Array.isArray(flag.rules) && flag.rules.length > 0) {
 		for (const rule of flag.rules as FlagRule[]) {
 			if (evaluateRule(rule, context)) {
@@ -388,7 +398,6 @@ export function evaluateFlag(
 		}
 	}
 
-	// Check target group rules - if user matches any group rule, enable the flag
 	if (flag.resolvedTargetGroups && flag.resolvedTargetGroups.length > 0) {
 		for (const group of flag.resolvedTargetGroups) {
 			if (group.rules && Array.isArray(group.rules)) {
@@ -413,7 +422,7 @@ export function evaluateFlag(
 	) {
 		const { value, variant } = selectVariant(flag, context);
 		return {
-			enabled: true, // Variants are always "enabled"
+			enabled: true,
 			value,
 			variant,
 			payload: flag.payload,
@@ -436,7 +445,6 @@ export function evaluateFlag(
 				identifier = context.teamId || "anonymous";
 				break;
 			default:
-				// Default: user-based rollout
 				identifier = context.userId || context.email || "anonymous";
 		}
 
@@ -461,246 +469,208 @@ export function evaluateFlag(
 	};
 }
 
+const FLAG_CACHE_CONTROL =
+	"public, max-age=15, s-maxage=30, stale-while-revalidate=15";
+
 export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
+	.onAfterHandle(({ set }) => {
+		if (!set.status || set.status === 200) {
+			set.headers["cache-control"] = FLAG_CACHE_CONTROL;
+		}
+		set.headers.vary = "Origin";
+	})
 	.get(
 		"/evaluate",
-		function evaluateFlagEndpoint({ query, set }) {
-			return (async (): Promise<FlagResult> => {
-				mergeWideEvent({
-					flag_key: query.key || "missing",
-					flag_client_id: query.clientId || "missing",
-					flag_has_user_id: Boolean(query.userId),
-					flag_has_email: Boolean(query.email),
-					flag_environment: query.environment || "missing",
-				});
+		async function evaluateFlagEndpoint({ query, set }) {
+			mergeWideEvent({
+				flag_key: query.key || "missing",
+				flag_client_id: query.clientId || "missing",
+				flag_has_user_id: Boolean(query.userId),
+				flag_has_email: Boolean(query.email),
+				flag_environment: query.environment || "missing",
+			});
 
-				try {
-					if (!(query.key && query.clientId)) {
-						mergeWideEvent({ flag_error: "missing_params" });
-						set.status = 400;
-						return {
-							enabled: false,
-							value: false,
-							payload: null,
-							reason: "MISSING_REQUIRED_PARAMS",
-						};
-					}
-
-					const context: UserContext = {
-						userId: query.userId,
-						email: query.email,
-						organizationId: query.organizationId,
-						teamId: query.teamId,
-						properties: parseProperties(query.properties),
-					};
-
-					useLogger().set({
-						flags: {
-							evaluationRequest: {
-								key: query.key,
-								clientId: query.clientId,
-								userId: query.userId,
-								email: query.email,
-								environment: query.environment,
-							},
-						},
-					});
-
-					const flag = await getCachedFlag(
-						query.key,
-						query.clientId,
-						query.environment
-					);
-
-					if (!flag) {
-						mergeWideEvent({ flag_found: false });
-						return {
-							enabled: false,
-							value: false,
-							payload: null,
-							reason: "FLAG_NOT_FOUND",
-						};
-					}
-
-					const result = evaluateFlag(
-						{
-							defaultValue: flag.defaultValue,
-							key: flag.key,
-							type: flag.type,
-							status: flag.status,
-							rolloutPercentage: flag.rolloutPercentage,
-							rolloutBy: flag.rolloutBy,
-							rules: flag.rules,
-							variants: flag.variants as Variant[],
-							payload: flag.payload,
-							targetGroupIds: flag.targetGroupIds as string[],
-							resolvedTargetGroups: flag.resolvedTargetGroups,
-						},
-						context
-					);
-					mergeWideEvent({
-						flag_found: true,
-						flag_type: flag.type,
-						flag_enabled: result.enabled,
-						flag_reason: result.reason,
-					});
-
-					return result;
-				} catch (error) {
-					mergeWideEvent({ flag_error: true });
-					useLogger().error(
-						error instanceof Error ? error : new Error(String(error)),
-						{ flags: { key: query.key, clientId: query.clientId } }
-					);
-					set.status = 500;
+			try {
+				if (!(query.key && query.clientId)) {
+					mergeWideEvent({ flag_error: "missing_params" });
+					set.status = 400;
 					return {
 						enabled: false,
 						value: false,
 						payload: null,
-						reason: "EVALUATION_ERROR",
+						reason: "MISSING_REQUIRED_PARAMS",
 					};
 				}
-			})();
+
+				const context: UserContext = {
+					userId: query.userId,
+					email: query.email,
+					organizationId: query.organizationId,
+					teamId: query.teamId,
+					properties: parseProperties(query.properties),
+				};
+
+				const flag = await fromMemory(
+					`f:${query.key}:${query.clientId}:${query.environment || ""}`,
+					() => getCachedFlag(query.key, query.clientId, query.environment)
+				);
+
+				if (!flag) {
+					mergeWideEvent({ flag_found: false });
+					return {
+						enabled: false,
+						value: false,
+						payload: null,
+						reason: "FLAG_NOT_FOUND",
+					};
+				}
+
+				const result = evaluateFlag(flag as unknown as EvaluableFlag, context);
+				mergeWideEvent({
+					flag_found: true,
+					flag_type: flag.type,
+					flag_enabled: result.enabled,
+					flag_reason: result.reason,
+				});
+
+				return result;
+			} catch (error) {
+				mergeWideEvent({ flag_error: true });
+				useLogger().error(
+					error instanceof Error ? error : new Error(String(error)),
+					{ flags: { key: query.key, clientId: query.clientId } }
+				);
+				set.status = 500;
+				return {
+					enabled: false,
+					value: false,
+					payload: null,
+					reason: "EVALUATION_ERROR",
+				};
+			}
 		},
 		{ query: flagQuerySchema }
 	)
 
 	.get(
 		"/bulk",
-		function bulkEvaluateFlags({ query, set }) {
-			return (async () => {
-				mergeWideEvent({
-					flag_bulk: true,
-					flag_client_id: query.clientId || "missing",
-					flag_has_user_id: Boolean(query.userId),
-					flag_has_email: Boolean(query.email),
-					flag_environment: query.environment || "missing",
-				});
+		async function bulkEvaluateFlags({ query, set }) {
+			mergeWideEvent({
+				flag_bulk: true,
+				flag_client_id: query.clientId || "missing",
+				flag_has_user_id: Boolean(query.userId),
+				flag_has_email: Boolean(query.email),
+				flag_environment: query.environment || "missing",
+			});
 
-				try {
-					if (!query.clientId) {
-						mergeWideEvent({ flag_error: "missing_client_id" });
-						set.status = 400;
-						return {
-							flags: {},
-							count: 0,
-							error: "Missing required clientId parameter",
-						};
-					}
-
-					const context: UserContext = {
-						userId: query.userId,
-						email: query.email,
-						organizationId: query.organizationId,
-						teamId: query.teamId,
-						properties: parseProperties(query.properties),
-					};
-
-					const allFlags = await getCachedFlagsForClient(
-						query.clientId,
-						query.environment
-					);
-
-					mergeWideEvent({
-						flag_total_flags: allFlags.length,
-					});
-
-					const enabledFlags: Record<string, FlagResult> = {};
-
-					mergeWideEvent({ flag_count: allFlags.length });
-					for (const flag of allFlags) {
-						const result = evaluateFlag(
-							flag as unknown as EvaluableFlag,
-							context
-						);
-						if (result.enabled) {
-							enabledFlags[flag.key] = result;
-						}
-					}
-
-					mergeWideEvent({
-						flag_enabled_count: Object.keys(enabledFlags).length,
-					});
-
-					return {
-						flags: enabledFlags,
-						count: Object.keys(enabledFlags).length,
-						timestamp: new Date().toISOString(),
-					};
-				} catch (error) {
-					mergeWideEvent({ flag_error: true });
-					useLogger().error(
-						error instanceof Error ? error : new Error(String(error)),
-						{ flags: { bulk: true, clientId: query.clientId } }
-					);
-					set.status = 500;
+			try {
+				if (!query.clientId) {
+					mergeWideEvent({ flag_error: "missing_client_id" });
+					set.status = 400;
 					return {
 						flags: {},
 						count: 0,
-						error: "Bulk evaluation failed",
+						error: "Missing required clientId parameter",
 					};
 				}
-			})();
+
+				const context: UserContext = {
+					userId: query.userId,
+					email: query.email,
+					organizationId: query.organizationId,
+					teamId: query.teamId,
+					properties: parseProperties(query.properties),
+				};
+
+				const requestedKeys = query.keys
+					? new Set(
+							query.keys
+								.split(",")
+								.map((k) => k.trim())
+								.filter(Boolean)
+						)
+					: null;
+
+				const allFlags = await fromMemory(
+					`fc:${query.clientId}:${query.environment || ""}`,
+					() => getCachedFlagsForClient(query.clientId, query.environment)
+				);
+
+				const flagsToEvaluate = requestedKeys
+					? allFlags.filter((f) => requestedKeys.has(f.key))
+					: allFlags;
+
+				const results: Record<string, FlagResult> = {};
+				for (const flag of flagsToEvaluate) {
+					results[flag.key] = evaluateFlag(
+						flag as unknown as EvaluableFlag,
+						context
+					);
+				}
+
+				const count = Object.keys(results).length;
+				mergeWideEvent({
+					flag_total_flags: allFlags.length,
+					flag_evaluated: flagsToEvaluate.length,
+					flag_count: count,
+				});
+
+				return { flags: results, count };
+			} catch (error) {
+				mergeWideEvent({ flag_error: true });
+				useLogger().error(
+					error instanceof Error ? error : new Error(String(error)),
+					{ flags: { bulk: true, clientId: query.clientId } }
+				);
+				set.status = 500;
+				return { flags: {}, count: 0, error: "Bulk evaluation failed" };
+			}
 		},
 		{ query: bulkFlagQuerySchema }
 	)
 
 	.get(
 		"/definitions",
-		function getDefinitionsEndpoint({ query, set }) {
-			return (async () => {
-				mergeWideEvent({
-					flag_client_id: query.clientId || "missing",
-					flag_environment: query.environment || "missing",
-				});
+		async function getDefinitionsEndpoint({ query, set }) {
+			mergeWideEvent({
+				flag_client_id: query.clientId || "missing",
+				flag_environment: query.environment || "missing",
+			});
 
-				try {
-					if (!query.clientId) {
-						mergeWideEvent({ flag_error: "missing_client_id" });
-						set.status = 400;
-						return {
-							flags: [],
-							error: "Missing required clientId parameter",
-						};
-					}
+			try {
+				if (!query.clientId) {
+					mergeWideEvent({ flag_error: "missing_client_id" });
+					set.status = 400;
+					return { flags: [], error: "Missing required clientId parameter" };
+				}
 
-					const allFlags = await getCachedFlagsForClient(
-						query.clientId,
-						query.environment
-					);
+				const allFlags = await fromMemory(
+					`fc:${query.clientId}:${query.environment || ""}`,
+					() => getCachedFlagsForClient(query.clientId, query.environment)
+				);
 
-					mergeWideEvent({
-						flag_total_flags: allFlags.length,
-					});
+				mergeWideEvent({ flag_total_flags: allFlags.length });
 
-					// Return flag definitions without evaluation
-					const flagDefinitions = allFlags.map((flag) => ({
+				return {
+					flags: allFlags.map((flag) => ({
 						key: flag.key,
 						description: flag.description,
 						type: flag.type,
 						variants: flag.variants,
 						createdAt: flag.createdAt,
 						updatedAt: flag.updatedAt,
-					}));
-
-					return {
-						flags: flagDefinitions,
-						count: flagDefinitions.length,
-						timestamp: new Date().toISOString(),
-					};
-				} catch (error) {
-					mergeWideEvent({ flag_error: true });
-					useLogger().error(
-						error instanceof Error ? error : new Error(String(error)),
-						{ flags: { definitions: true, clientId: query.clientId } }
-					);
-					set.status = 500;
-					return {
-						flags: [],
-						error: "Failed to fetch flag definitions",
-					};
-				}
-			})();
+					})),
+					count: allFlags.length,
+				};
+			} catch (error) {
+				mergeWideEvent({ flag_error: true });
+				useLogger().error(
+					error instanceof Error ? error : new Error(String(error)),
+					{ flags: { definitions: true, clientId: query.clientId } }
+				);
+				set.status = 500;
+				return { flags: [], error: "Failed to fetch flag definitions" };
+			}
 		},
 		{
 			query: t.Object({
@@ -714,5 +684,4 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 		service: "flags",
 		status: "ok",
 		version: "1.0.0",
-		timestamp: new Date().toISOString(),
 	}));

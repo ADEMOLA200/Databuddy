@@ -23,10 +23,18 @@ When you discover a new performance improvement, optimization pattern, or fix a 
 
 ## Caching layers
 
+- **In-process**: `lru-cache` (Map + TTL) in front of Redis — eliminates network round-trip on hot paths, sub-millisecond reads
 - **Next.js layer**: `unstable_cache` with `revalidate` and `tags` for page-level data
 - **API layer**: Redis `cacheable` wrapper with `staleWhileRevalidate` to absorb concurrent requests
 - **CDN layer**: `Cache-Control: public, s-maxage=N, stale-while-revalidate=M` headers for edge caching
-- Stack all three — they protect different parts of the request path
+- Stack all four — in-process > Redis > DB on the API side, CDN in front of everything
+- `@elysiajs/cors` with `origin: true` sets `Vary: *` which prevents CDN caching — override with `set.headers.vary = "Origin"` on cacheable endpoints
+
+## API middleware
+
+- Skip expensive middleware for routes that don't need it — `applyAuthWideEvent` does a session DB lookup on every request; skip it for anonymous `/public/` routes via URL check in `onBeforeHandle`
+- Use `@elysiajs/server-timing` to profile per-phase durations (CORS, beforeHandle, handle, afterHandle) without manual instrumentation
+- Elysia's JIT compiler is on by default (`precompile: true`) — no extra config needed
 
 ## Database queries
 
