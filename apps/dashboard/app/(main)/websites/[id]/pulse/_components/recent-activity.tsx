@@ -201,66 +201,66 @@ export function RecentActivity({
 							checks.map((check) => (
 								<TableRow key={recentActivityCheckKey(check)}>
 									<TableCell className="max-w-[min(100%,14rem)] align-middle">
-								{(() => {
-									const display = resolveCheckDisplay(check);
-									const iconMap = {
-										up: (
-											<CheckCircleIcon
-												aria-hidden
-												className="mt-0.5 shrink-0 text-emerald-500 sm:mt-0"
-												size={18}
-												weight="fill"
-											/>
-										),
-										pending: (
-											<WarningCircleIcon
-												aria-hidden
-												className="mt-0.5 shrink-0 text-amber-500 sm:mt-0"
-												size={18}
-												weight="fill"
-											/>
-										),
-										degraded: (
-											<WarningCircleIcon
-												aria-hidden
-												className="mt-0.5 shrink-0 text-amber-500 sm:mt-0"
-												size={18}
-												weight="fill"
-											/>
-										),
-										down: (
-											<XCircleIcon
-												aria-hidden
-												className="mt-0.5 shrink-0 text-red-500 sm:mt-0"
-												size={18}
-												weight="fill"
-											/>
-										),
-									};
+										{(() => {
+											const display = resolveCheckDisplay(check);
+											const iconMap = {
+												up: (
+													<CheckCircleIcon
+														aria-hidden
+														className="mt-0.5 shrink-0 text-emerald-500 sm:mt-0"
+														size={18}
+														weight="fill"
+													/>
+												),
+												pending: (
+													<WarningCircleIcon
+														aria-hidden
+														className="mt-0.5 shrink-0 text-amber-500 sm:mt-0"
+														size={18}
+														weight="fill"
+													/>
+												),
+												degraded: (
+													<WarningCircleIcon
+														aria-hidden
+														className="mt-0.5 shrink-0 text-amber-500 sm:mt-0"
+														size={18}
+														weight="fill"
+													/>
+												),
+												down: (
+													<XCircleIcon
+														aria-hidden
+														className="mt-0.5 shrink-0 text-red-500 sm:mt-0"
+														size={18}
+														weight="fill"
+													/>
+												),
+											};
 
-									return (
-										<div className="flex items-start gap-2.5 sm:items-center">
-											{iconMap[display.tone]}
-											<div className="flex min-w-0 flex-col gap-0.5">
-												<span className="font-medium text-sm leading-tight">
-													{display.label}
-												</span>
-												{display.tone === "down" && check.error ? (
-													<span
-														className="line-clamp-2 text-pretty text-destructive text-xs leading-snug"
-														title={check.error}
-													>
-														{check.error}
-													</span>
-												) : display.tone === "degraded" ? (
-													<span className="text-muted-foreground text-xs leading-snug">
-														HTTP {check.http_code}
-													</span>
-												) : null}
-											</div>
-										</div>
-									);
-								})()}
+											return (
+												<div className="flex items-start gap-2.5 sm:items-center">
+													{iconMap[display.tone]}
+													<div className="flex min-w-0 flex-col gap-0.5">
+														<span className="font-medium text-sm leading-tight">
+															{display.label}
+														</span>
+														{display.tone === "down" && check.error ? (
+															<span
+																className="line-clamp-2 text-pretty text-destructive text-xs leading-snug"
+																title={check.error}
+															>
+																{check.error}
+															</span>
+														) : display.tone === "degraded" ? (
+															<span className="text-muted-foreground text-xs leading-snug">
+																HTTP {check.http_code}
+															</span>
+														) : null}
+													</div>
+												</div>
+											);
+										})()}
 									</TableCell>
 									<TableCell className="text-center align-middle text-muted-foreground text-xs tabular-nums">
 										{formatLocalTime(check.timestamp, "MMM D, HH:mm:ss")}
