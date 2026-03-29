@@ -1,4 +1,4 @@
-import { log } from "evlog";
+import { EvlogError, log } from "evlog";
 import { useLogger as getRequestLogger } from "evlog/elysia";
 
 /**
@@ -25,6 +25,19 @@ export function captureError(
 	const err = error instanceof Error ? error : new Error(String(error));
 	try {
 		const requestLog = getRequestLogger();
+		if (err instanceof EvlogError && err.status >= 400 && err.status < 500) {
+			requestLog.set({
+				client_http_error: true,
+				http_status: err.status,
+				error_message: err.message,
+			});
+			if (fields) {
+				requestLog.warn(err.message, fields as Record<string, unknown>);
+			} else {
+				requestLog.warn(err.message);
+			}
+			return;
+		}
 		if (fields) {
 			requestLog.error(err, fields as Record<string, unknown>);
 		} else {
@@ -33,7 +46,7 @@ export function captureError(
 	} catch {
 		log.error({
 			service: "api",
-			error: err.message,
+			error_message: err.message,
 			...(fields ?? {}),
 		});
 	}

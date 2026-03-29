@@ -39,6 +39,31 @@ const devFsDrain = useLocalEvlogFiles
 
 const DURATION_MS_REGEX = /^([\d.]+)(ms|s)$/;
 
+/**
+ * Before Axiom: fix `error` string vs object collision; downgrade 4xx to warn.
+ */
+function normalizeWideEventForAxiom(event: Record<string, unknown>): void {
+	if (typeof event.error === "string") {
+		event.error_message = event.error;
+		event.error = undefined;
+	}
+
+	if (event.level !== "error") {
+		return;
+	}
+
+	const err = event.error;
+	if (!err || typeof err !== "object" || Array.isArray(err)) {
+		return;
+	}
+
+	const status = (err as { status?: number }).status;
+	if (typeof status === "number" && status >= 400 && status < 500) {
+		event.level = "warn";
+		event.client_http_error = true;
+	}
+}
+
 function parseDurationMs(duration: unknown): number | undefined {
 	if (typeof duration !== "string") {
 		return undefined;
@@ -60,6 +85,8 @@ export async function basketLoggerDrain(ctx: DrainContext): Promise<void> {
 	if (ctx.event.method === "OPTIONS") {
 		return;
 	}
+
+	normalizeWideEventForAxiom(ctx.event as Record<string, unknown>);
 
 	const durationMs = parseDurationMs(ctx.event.duration);
 	if (durationMs !== undefined) {

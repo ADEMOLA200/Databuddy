@@ -1,4 +1,4 @@
-import { log } from "evlog";
+import { EvlogError, log } from "evlog";
 import { useLogger } from "evlog/elysia";
 
 /**
@@ -20,6 +20,19 @@ export function captureError(
 	const err = error instanceof Error ? error : new Error(String(error));
 	try {
 		const requestLog = useLogger();
+		if (err instanceof EvlogError && err.status >= 400 && err.status < 500) {
+			requestLog.set({
+				client_http_error: true,
+				http_status: err.status,
+				error_message: err.message,
+			});
+			if (attributes) {
+				requestLog.warn(err.message, attributes as Record<string, unknown>);
+			} else {
+				requestLog.warn(err.message);
+			}
+			return;
+		}
 		if (attributes) {
 			requestLog.error(err, attributes as Record<string, unknown>);
 		} else {
@@ -28,7 +41,7 @@ export function captureError(
 	} catch {
 		log.error({
 			service: "basket",
-			error: err.message,
+			error_message: err.message,
 			...(attributes ?? {}),
 		});
 	}

@@ -78,6 +78,7 @@ Read [codebase-map.md](./references/codebase-map.md) when you need deeper routin
 - Start in `apps/basket/src`
 - Request validation, billing checks, geo/IP parsing, producer logic, and structured errors are important here
 - Storage and schema concerns usually continue into `packages/db`
+- **evlog → Axiom:** never use top-level `error` as a **string** on `log.error({ ... })` (e.g. process handlers); it overwrites structured `error.message` on the wide event. Use `error_message` instead. Basket/API drains run `normalizeWideEventForAxiom` before ingest; 4xx `EvlogError` rows are emitted as `level: "warn"` with `client_http_error: true` so Axiom “errors” are not inflated by expected client failures.
 
 ### Database work
 

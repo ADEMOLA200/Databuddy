@@ -31,7 +31,7 @@ process.on("unhandledRejection", (reason, _promise) => {
 	captureError(reason);
 	log.error({
 		process: "unhandledRejection",
-		error: reason instanceof Error ? reason.message : String(reason),
+		error_message: reason instanceof Error ? reason.message : String(reason),
 		error_stack: reason instanceof Error ? reason.stack : undefined,
 		error_source: "process",
 	});
@@ -41,7 +41,7 @@ process.on("uncaughtException", (error) => {
 	captureError(error);
 	log.error({
 		process: "uncaughtException",
-		error: error instanceof Error ? error.message : String(error),
+		error_message: error instanceof Error ? error.message : String(error),
 		error_stack: error instanceof Error ? error.stack : undefined,
 		error_source: "process",
 	});
@@ -52,19 +52,19 @@ process.on("SIGTERM", async () => {
 	await flushBatchedAxiomDrain().catch((error) =>
 		log.error({
 			lifecycle: "drainFlush",
-			error: error instanceof Error ? error.message : String(error),
+			error_message: error instanceof Error ? error.message : String(error),
 		})
 	);
 	await runPromise(disconnect).catch((error) =>
 		log.error({
 			lifecycle: "shutdown",
-			error: error instanceof Error ? error.message : String(error),
+			error_message: error instanceof Error ? error.message : String(error),
 		})
 	);
 	await disposeRuntime().catch((error) =>
 		log.error({
 			lifecycle: "runtimeDispose",
-			error: error instanceof Error ? error.message : String(error),
+			error_message: error instanceof Error ? error.message : String(error),
 		})
 	);
 	closeGeoIPReader();
@@ -76,19 +76,19 @@ process.on("SIGINT", async () => {
 	await flushBatchedAxiomDrain().catch((error) =>
 		log.error({
 			lifecycle: "drainFlush",
-			error: error instanceof Error ? error.message : String(error),
+			error_message: error instanceof Error ? error.message : String(error),
 		})
 	);
 	await runPromise(disconnect).catch((error) =>
 		log.error({
 			lifecycle: "shutdown",
-			error: error instanceof Error ? error.message : String(error),
+			error_message: error instanceof Error ? error.message : String(error),
 		})
 	);
 	await disposeRuntime().catch((error) =>
 		log.error({
 			lifecycle: "runtimeDispose",
-			error: error instanceof Error ? error.message : String(error),
+			error_message: error instanceof Error ? error.message : String(error),
 		})
 	);
 	closeGeoIPReader();
