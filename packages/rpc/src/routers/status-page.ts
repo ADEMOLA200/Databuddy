@@ -8,6 +8,7 @@ import {
 	uptimeSchedules,
 	websites,
 } from "@databuddy/db";
+import { cacheable } from "@databuddy/redis";
 import { z } from "zod";
 import { rpcError } from "../errors";
 import { logger } from "../lib/logger";
@@ -43,6 +44,8 @@ const statusPageOutputSchema = z.object({
 	monitors: z.array(monitorSchema),
 });
 
+type StatusPageOutput = z.infer<typeof statusPageOutputSchema>;
+
 function deriveOverallStatus(
 	monitors: { currentStatus: "up" | "down" | "unknown" }[]
 ): "operational" | "degraded" | "outage" {
@@ -75,6 +78,169 @@ interface LatestCheckRow {
 	last_status: number;
 }
 
+async function _fetchStatusPageData(
+	slug: string
+): Promise<StatusPageOutput | null> {
+	const rows = await db
+		.select({
+			orgName: organization.name,
+			orgSlug: organization.slug,
+			orgLogo: organization.logo,
+			scheduleId: uptimeSchedules.id,
+			websiteId: uptimeSchedules.websiteId,
+			scheduleName: uptimeSchedules.name,
+			scheduleUrl: uptimeSchedules.url,
+		})
+		.from(organization)
+		.innerJoin(
+			uptimeSchedules,
+			and(
+				eq(uptimeSchedules.organizationId, organization.id),
+				eq(uptimeSchedules.isPublic, true),
+				eq(uptimeSchedules.isPaused, false)
+			)
+		)
+		.where(eq(organization.slug, slug));
+
+	if (rows.length === 0) {
+		return null;
+	}
+
+	const org = {
+		name: rows[0].orgName,
+		slug: rows[0].orgSlug ?? slug,
+		logo: rows[0].orgLogo,
+	};
+
+	const schedules = rows.map((r) => ({
+		id: r.scheduleId,
+		websiteId: r.websiteId,
+		name: r.scheduleName,
+		url: r.scheduleUrl,
+	}));
+
+	const today = new Date();
+	const ninetyDaysAgo = new Date(today);
+	ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 89);
+
+	const startDate = ninetyDaysAgo.toISOString().split("T").at(0) ?? "";
+	const endDate = today.toISOString().split("T").at(0) ?? "";
+
+	const websiteIds = schedules
+		.map((s) => s.websiteId)
+		.filter((id): id is string => id !== null);
+
+	const siteIds = schedules.map((s) => s.websiteId ?? s.id);
+
+	const [websiteRows, allDailyData, allRecentChecks] = await Promise.all([
+		websiteIds.length > 0
+			? db
+					.select({
+						id: websites.id,
+						domain: websites.domain,
+						name: websites.name,
+					})
+					.from(websites)
+					.where(inArray(websites.id, websiteIds))
+			: Promise.resolve([]),
+		chQuery<DailyRow>(
+			`SELECT
+					site_id,
+					toDate(timestamp) as date,
+					if((countIf(status = 1) + countIf(status = 0)) = 0, 0, round((countIf(status = 1) / (countIf(status = 1) + countIf(status = 0))) * 100, 2)) as uptime_percentage,
+					round(avg(total_ms), 2) as avg_response_time,
+					round(quantile(0.95)(total_ms), 2) as p95_response_time
+				FROM ${UPTIME_TABLE}
+				WHERE
+					site_id IN ({siteIds:Array(String)})
+					AND timestamp >= toDateTime({startDate:String})
+					AND timestamp <= toDateTime(concat({endDate:String}, ' 23:59:59'))
+				GROUP BY site_id, date
+				ORDER BY site_id, date ASC`,
+			{ siteIds, startDate, endDate }
+		),
+		chQuery<LatestCheckRow>(
+			`SELECT
+					site_id,
+					max(timestamp) as last_timestamp,
+					argMax(status, timestamp) as last_status
+				FROM ${UPTIME_TABLE}
+				WHERE site_id IN ({siteIds:Array(String)})
+					AND timestamp >= now() - INTERVAL 7 DAY
+				GROUP BY site_id`,
+			{ siteIds }
+		),
+	]);
+
+	const websiteMap = new Map(websiteRows.map((w) => [w.id, w]));
+
+	const dailyBySite = new Map<string, DailyRow[]>();
+	for (const row of allDailyData) {
+		const existing = dailyBySite.get(row.site_id);
+		if (existing) {
+			existing.push(row);
+		} else {
+			dailyBySite.set(row.site_id, [row]);
+		}
+	}
+
+	const latestBySite = new Map<string, LatestCheckRow>();
+	for (const row of allRecentChecks) {
+		latestBySite.set(row.site_id, row);
+	}
+
+	const monitors = schedules.map((schedule) => {
+		const siteId = schedule.websiteId ?? schedule.id;
+		const website = schedule.websiteId
+			? websiteMap.get(schedule.websiteId)
+			: undefined;
+		const dailyData = dailyBySite.get(siteId) ?? [];
+		const latestCheck = latestBySite.get(siteId);
+
+		const currentStatus: "up" | "down" | "unknown" = latestCheck
+			? latestCheck.last_status === 1
+				? "up"
+				: latestCheck.last_status === 0
+					? "down"
+					: "unknown"
+			: "unknown";
+
+		const uptimePercentage =
+			dailyData.length > 0
+				? dailyData.reduce((sum, d) => sum + d.uptime_percentage, 0) /
+					dailyData.length
+				: 0;
+
+		return {
+			id: schedule.id,
+			name: schedule.name ?? website?.name ?? website?.domain ?? schedule.url,
+			domain: website?.domain ?? schedule.url,
+			currentStatus,
+			uptimePercentage: Math.round(uptimePercentage * 100) / 100,
+			dailyData: dailyData.map((d) => ({
+				date: String(d.date),
+				uptime_percentage: d.uptime_percentage,
+				avg_response_time: d.avg_response_time,
+				p95_response_time: d.p95_response_time,
+			})),
+			lastCheckedAt: latestCheck?.last_timestamp ?? null,
+		};
+	});
+
+	return {
+		organization: org,
+		overallStatus: deriveOverallStatus(monitors),
+		monitors,
+	};
+}
+
+const fetchStatusPageData = cacheable(_fetchStatusPageData, {
+	expireInSec: 60,
+	prefix: "status-page",
+	staleWhileRevalidate: true,
+	staleTime: 30,
+});
+
 export const statusPageRouter = {
 	getBySlug: publicProcedure
 		.route({
@@ -86,153 +252,13 @@ export const statusPageRouter = {
 		.input(z.object({ slug: z.string().min(1) }))
 		.output(statusPageOutputSchema)
 		.handler(async ({ input }) => {
-			const [org] = await db
-				.select()
-				.from(organization)
-				.where(eq(organization.slug, input.slug))
-				.limit(1);
+			const data = await fetchStatusPageData(input.slug);
 
-			if (!org) {
-				throw rpcError.notFound("Organization", input.slug);
-			}
-
-			const schedules = await db
-				.select({
-					id: uptimeSchedules.id,
-					websiteId: uptimeSchedules.websiteId,
-					name: uptimeSchedules.name,
-					url: uptimeSchedules.url,
-				})
-				.from(uptimeSchedules)
-				.where(
-					and(
-						eq(uptimeSchedules.organizationId, org.id),
-						eq(uptimeSchedules.isPublic, true),
-						eq(uptimeSchedules.isPaused, false)
-					)
-				);
-
-			if (schedules.length === 0) {
+			if (!data) {
 				throw rpcError.notFound("StatusPage", input.slug);
 			}
 
-			const today = new Date();
-			const ninetyDaysAgo = new Date(today);
-			ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 89);
-
-			const startDate = ninetyDaysAgo.toISOString().split("T").at(0) ?? "";
-			const endDate = today.toISOString().split("T").at(0) ?? "";
-
-			const websiteIds = schedules
-				.map((s) => s.websiteId)
-				.filter((id): id is string => id !== null);
-
-			const siteIds = schedules.map((s) => s.websiteId ?? s.id);
-
-			const [websiteRows, allDailyData, allRecentChecks] = await Promise.all([
-				websiteIds.length > 0
-					? db
-							.select({
-								id: websites.id,
-								domain: websites.domain,
-								name: websites.name,
-							})
-							.from(websites)
-							.where(inArray(websites.id, websiteIds))
-					: Promise.resolve([]),
-				chQuery<DailyRow>(
-					`SELECT
-							site_id,
-							toDate(timestamp) as date,
-							if((countIf(status = 1) + countIf(status = 0)) = 0, 0, round((countIf(status = 1) / (countIf(status = 1) + countIf(status = 0))) * 100, 2)) as uptime_percentage,
-							round(avg(total_ms), 2) as avg_response_time,
-							round(quantile(0.95)(total_ms), 2) as p95_response_time
-						FROM ${UPTIME_TABLE}
-						WHERE
-							site_id IN ({siteIds:Array(String)})
-							AND timestamp >= toDateTime({startDate:String})
-							AND timestamp <= toDateTime(concat({endDate:String}, ' 23:59:59'))
-						GROUP BY site_id, date
-						ORDER BY site_id, date ASC`,
-					{ siteIds, startDate, endDate }
-				),
-				chQuery<LatestCheckRow>(
-					`SELECT
-							site_id,
-							max(timestamp) as last_timestamp,
-							argMax(status, timestamp) as last_status
-						FROM ${UPTIME_TABLE}
-						WHERE site_id IN ({siteIds:Array(String)})
-						GROUP BY site_id`,
-					{ siteIds }
-				),
-			]);
-
-			const websiteMap = new Map(websiteRows.map((w) => [w.id, w]));
-
-			const dailyBySite = new Map<string, DailyRow[]>();
-			for (const row of allDailyData) {
-				const existing = dailyBySite.get(row.site_id);
-				if (existing) {
-					existing.push(row);
-				} else {
-					dailyBySite.set(row.site_id, [row]);
-				}
-			}
-
-			const latestBySite = new Map<string, LatestCheckRow>();
-			for (const row of allRecentChecks) {
-				latestBySite.set(row.site_id, row);
-			}
-
-			const monitors = schedules.map((schedule) => {
-				const siteId = schedule.websiteId ?? schedule.id;
-				const website = schedule.websiteId
-					? websiteMap.get(schedule.websiteId)
-					: undefined;
-				const dailyData = dailyBySite.get(siteId) ?? [];
-				const latestCheck = latestBySite.get(siteId);
-
-				const currentStatus: "up" | "down" | "unknown" = latestCheck
-					? latestCheck.last_status === 1
-						? "up"
-						: latestCheck.last_status === 0
-							? "down"
-							: "unknown"
-					: "unknown";
-
-				const uptimePercentage =
-					dailyData.length > 0
-						? dailyData.reduce((sum, d) => sum + d.uptime_percentage, 0) /
-							dailyData.length
-						: 0;
-
-				return {
-					id: schedule.id,
-					name:
-						schedule.name ?? website?.name ?? website?.domain ?? schedule.url,
-					domain: website?.domain ?? schedule.url,
-					currentStatus,
-					uptimePercentage: Math.round(uptimePercentage * 100) / 100,
-					dailyData: dailyData.map((d) => ({
-						date: String(d.date),
-						uptime_percentage: d.uptime_percentage,
-						avg_response_time: d.avg_response_time,
-						p95_response_time: d.p95_response_time,
-					})),
-					lastCheckedAt: latestCheck?.last_timestamp ?? null,
-				};
-			});
-
-			return {
-				organization: {
-					name: org.name,
-					slug: org.slug ?? input.slug,
-					logo: org.logo,
-				},
-				overallStatus: deriveOverallStatus(monitors),
-				monitors,
-			};
+			return data;
 		}),
 
 	togglePublicMonitor: protectedProcedure

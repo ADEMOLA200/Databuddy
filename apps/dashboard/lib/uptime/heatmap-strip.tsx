@@ -23,6 +23,30 @@ export interface UptimeHeatmapStripProps {
 	tooltipHasData?: (day: UptimeHeatmapDay) => boolean;
 }
 
+function HeatmapCell({
+	day,
+	isActive,
+	interactive,
+}: {
+	day: UptimeHeatmapDay;
+	isActive: boolean;
+	interactive: boolean;
+}) {
+	return (
+		<div
+			className={cn(
+				"h-full flex-1 rounded-sm transition-colors",
+				getUptimeHeatmapCellClass({
+					uptimePercent: day.uptime,
+					hasData: day.hasData,
+					isActive,
+					interactive,
+				})
+			)}
+		/>
+	);
+}
+
 export function UptimeHeatmapStrip({
 	days,
 	interactive,
@@ -32,6 +56,21 @@ export function UptimeHeatmapStrip({
 	getDateLabel,
 	tooltipHasData,
 }: UptimeHeatmapStripProps) {
+	if (!interactive) {
+		return (
+			<div className={stripClassName}>
+				{days.map((day) => (
+					<HeatmapCell
+						day={day}
+						interactive={false}
+						isActive={isActive}
+						key={day.dateStr}
+					/>
+				))}
+			</div>
+		);
+	}
+
 	return (
 		<div className={stripClassName}>
 			{days.map((day) => {
@@ -40,18 +79,12 @@ export function UptimeHeatmapStrip({
 					: day.hasData;
 
 				return (
-					<Tooltip key={day.dateStr}>
+					<Tooltip key={day.dateStr} skipProvider>
 						<TooltipTrigger asChild>
-							<div
-								className={cn(
-									"h-full flex-1 rounded-sm transition-colors",
-									getUptimeHeatmapCellClass({
-										uptimePercent: day.uptime,
-										hasData: day.hasData,
-										isActive,
-										interactive,
-									})
-								)}
+							<HeatmapCell
+								day={day}
+								interactive
+								isActive={isActive}
 							/>
 						</TooltipTrigger>
 						<TooltipContent

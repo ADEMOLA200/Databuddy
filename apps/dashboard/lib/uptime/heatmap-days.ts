@@ -11,16 +11,17 @@ export function buildUptimeHeatmapDays(
 	data: Array<{ date: string; uptime_percentage?: number }>,
 	days: number
 ): UptimeHeatmapDay[] {
+	const dataByDate = new Map(
+		data.map((d) => [localDayjs(d.date).format("YYYY-MM-DD"), d])
+	);
+
 	const result: UptimeHeatmapDay[] = [];
 	const today = localDayjs().endOf("day");
 
 	for (let i = days - 1; i >= 0; i--) {
 		const date = today.subtract(i, "day");
 		const dateStr = date.format("YYYY-MM-DD");
-
-		const dayData = data.find(
-			(d) => localDayjs(d.date).format("YYYY-MM-DD") === dateStr
-		);
+		const dayData = dataByDate.get(dateStr);
 
 		result.push({
 			date: date.toDate(),
