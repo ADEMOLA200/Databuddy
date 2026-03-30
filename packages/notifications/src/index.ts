@@ -11,5 +11,6 @@ export {
 	sendWebhook,
 } from "./helpers";
 export * from "./providers";
+export * from "./templates/anomaly";
 export * from "./templates/uptime";
 export * from "./types";

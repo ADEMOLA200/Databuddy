@@ -324,6 +324,11 @@ export const websiteNavigation: NavigationSection[] = [
 			rootLevel: false,
 			gatedFeature: GATED_FEATURES.ERROR_TRACKING,
 		}),
+		createNavItem("Anomalies", WarningIcon, "/anomalies", {
+			rootLevel: false,
+			alpha: true,
+			flag: "anomalies",
+		}),
 		createNavItem("Pulse", HeartbeatIcon, "/pulse", {
 			rootLevel: false,
 			flag: "pulse",
