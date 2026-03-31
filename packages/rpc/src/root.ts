@@ -1,5 +1,6 @@
 import { alarmsRouter } from "./routers/alarms";
 import { annotationsRouter } from "./routers/annotations";
+import { anomaliesRouter } from "./routers/anomalies";
 import { apikeysRouter } from "./routers/apikeys";
 import { autocompleteRouter } from "./routers/autocomplete";
 import { billingRouter } from "./routers/billing";
@@ -19,6 +20,7 @@ import { websitesRouter } from "./routers/websites";
 
 export const appRouter = {
 	alarms: alarmsRouter,
+	anomalies: anomaliesRouter,
 	annotations: annotationsRouter,
 	websites: websitesRouter,
 	funnels: funnelsRouter,
