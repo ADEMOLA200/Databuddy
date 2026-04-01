@@ -1,22 +1,12 @@
 "use client";
 
 import { MinusIcon, TrendDownIcon, TrendUpIcon } from "@phosphor-icons/react";
-import { type ElementType, memo, useMemo } from "react";
+import type { ElementType } from "react";
 import {
-	Area,
-	Bar,
-	BarChart,
-	ComposedChart,
-	Customized,
-	Line,
-	ResponsiveContainer,
-	Tooltip,
-	XAxis,
-	YAxis,
-} from "recharts";
-import { ChartErrorBoundary } from "@/components/chart-error-boundary";
-import { useDynamicDasharray } from "@/components/charts/use-dynamic-dasharray";
-import { Chart } from "@/components/ui/composables/chart";
+	Chart,
+	type ChartCurveType,
+	type ChartSeriesKind,
+} from "@/components/ui/composables/chart";
 import {
 	HoverCard,
 	HoverCardContent,
@@ -40,13 +30,6 @@ interface Trend {
 	previousPeriod: { start: string; end: string };
 }
 
-export type ChartType = "area" | "bar" | "line";
-export type ChartStepType =
-	| "monotone"
-	| "linear"
-	| "step"
-	| "stepBefore"
-	| "stepAfter";
 export type StatCardDisplayMode = "compact" | "chart" | "text";
 
 interface StatCardProps {
@@ -56,20 +39,17 @@ interface StatCardProps {
 	description?: string;
 	icon?: ElementType;
 	trend?: Trend | number;
-	trendLabel?: string;
 	isLoading?: boolean;
 	className?: string;
-	variant?: "default" | "success" | "info" | "warning" | "danger";
 	invertTrend?: boolean;
 	id?: string;
 	chartData?: MiniChartDataPoint[];
 	showChart?: boolean;
-	chartType?: ChartType;
-	chartStepType?: ChartStepType;
+	chartType?: ChartSeriesKind;
+	chartStepType?: ChartCurveType;
 	formatValue?: (value: number) => string;
 	formatChartValue?: (value: number) => string;
 	displayMode?: StatCardDisplayMode;
-	/** Dashed stroke on the last segment (incomplete period), matching main traffic charts. */
 	partialLastSegment?: boolean;
 }
 
@@ -135,341 +115,46 @@ function TrendIndicator({
 	);
 }
 
-const MiniChart = memo(
-	({
-		data,
-		id,
-		formatChartValue,
-		title,
-		chartType = "area",
-		chartStepType = "monotone",
-		partialLastSegment = true,
-	}: {
-		data: MiniChartDataPoint[];
-		id: string;
-		formatChartValue?: (value: number) => string;
-		title?: string;
-		chartType?: ChartType;
-		chartStepType?: ChartStepType;
-		partialLastSegment?: boolean;
-	}) => {
-		const dashSplitIndex = useMemo(() => {
-			if (!partialLastSegment) {
-				return data.length;
-			}
-			return data.length - 2;
-		}, [partialLastSegment, data.length]);
+const MINI_CHART_HEIGHT = 102;
 
-		const curveAdjustment =
-			chartStepType === "step" ||
-			chartStepType === "stepBefore" ||
-			chartStepType === "stepAfter"
-				? 0
-				: 1;
-
-		const [DasharrayCalculator, lineDasharrays] = useDynamicDasharray({
-			chartType: chartStepType,
-			curveAdjustment,
-			splitIndex: dashSplitIndex,
-		});
-
-		const strokeDashForValue =
-			lineDasharrays.find((line) => line.name === "value")?.strokeDasharray ||
-			"0 0";
-
-		const hasData = data && data.length > 0;
-		const hasVariation = hasData && data.some((d) => d.value !== data[0].value);
-
-		if (!hasData) {
-			return (
-				<div className="flex h-24 items-center justify-center pt-2">
-					<span className="text-[10px] text-muted-foreground opacity-60">
-						No data
-					</span>
-				</div>
-			);
-		}
-
-		if (!hasVariation) {
-			return (
-				<div className="flex h-24 items-center pt-2">
-					<div className="h-px w-full bg-chart-1 opacity-30" />
-				</div>
-			);
-		}
-
-		const chartContent = () => {
-			switch (chartType) {
-				case "bar":
-					return (
-						<BarChart
-							data={data}
-							margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-						>
-							<defs>
-								<linearGradient
-									id={`gradient-${id}`}
-									x1="0"
-									x2="0"
-									y1="0"
-									y2="1"
-								>
-									<stop
-										offset="0%"
-										stopColor="var(--color-chart-1)"
-										stopOpacity={0.4}
-									/>
-									<stop
-										offset="100%"
-										stopColor="var(--color-chart-1)"
-										stopOpacity={0}
-									/>
-								</linearGradient>
-							</defs>
-							<XAxis dataKey="date" hide />
-							<YAxis domain={["dataMin", "dataMax"]} hide />
-							<Tooltip
-								content={({ active, payload, label }) =>
-									active &&
-									payload?.[0] &&
-									typeof payload[0].value === "number" ? (
-										<div className="rounded border bg-popover px-2 py-1.5 text-[10px] shadow-lg">
-											<p className="text-muted-foreground">
-												{new Date(label).toLocaleDateString("en-US", {
-													month: "short",
-													day: "numeric",
-												})}
-											</p>
-											<p className="font-semibold text-foreground">
-												{formatChartValue
-													? formatChartValue(payload[0].value)
-													: formatMetricNumber(payload[0].value)}{" "}
-												{title && (
-													<span className="font-normal text-muted-foreground">
-														{title}
-													</span>
-												)}
-											</p>
-										</div>
-									) : null
-								}
-								cursor={{ stroke: "var(--color-chart-1)", strokeOpacity: 0.3 }}
-							/>
-							<Bar
-								dataKey="value"
-								fill={`url(#gradient-${id})`}
-								radius={[2, 2, 0, 0]}
-							/>
-						</BarChart>
-					);
-				case "line":
-					return (
-						<ComposedChart
-							data={data}
-							margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-						>
-							<XAxis dataKey="date" hide />
-							<YAxis domain={["dataMin", "dataMax"]} hide />
-							<Tooltip
-								content={({ active, payload, label }) =>
-									active &&
-									payload?.[0] &&
-									typeof payload[0].value === "number" ? (
-										<div className="rounded border bg-popover px-2 py-1.5 text-[10px] shadow-lg">
-											<p className="text-muted-foreground">
-												{new Date(label).toLocaleDateString("en-US", {
-													month: "short",
-													day: "numeric",
-												})}
-											</p>
-											<p className="font-semibold text-foreground">
-												{formatChartValue
-													? formatChartValue(payload[0].value)
-													: formatMetricNumber(payload[0].value)}{" "}
-												{title && (
-													<span className="font-normal text-muted-foreground">
-														{title}
-													</span>
-												)}
-											</p>
-										</div>
-									) : null
-								}
-								cursor={{ stroke: "var(--color-chart-1)", strokeOpacity: 0.3 }}
-							/>
-							<Line
-								dataKey="value"
-								dot={false}
-								stroke="var(--color-chart-1)"
-								strokeDasharray={strokeDashForValue}
-								strokeWidth={1.5}
-								type={chartStepType}
-							/>
-							<Customized component={DasharrayCalculator} />
-						</ComposedChart>
-					);
-				case "area":
-					return (
-						<ComposedChart
-							data={data}
-							margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-						>
-							<defs>
-								<linearGradient
-									id={`gradient-${id}`}
-									x1="0"
-									x2="0"
-									y1="0"
-									y2="1"
-								>
-									<stop
-										offset="0%"
-										stopColor="var(--color-chart-1)"
-										stopOpacity={0.4}
-									/>
-									<stop
-										offset="100%"
-										stopColor="var(--color-chart-1)"
-										stopOpacity={0}
-									/>
-								</linearGradient>
-							</defs>
-							<XAxis dataKey="date" hide />
-							<YAxis domain={["dataMin", "dataMax"]} hide />
-							<Tooltip
-								content={({ active, payload, label }) =>
-									active &&
-									payload?.[0] &&
-									typeof payload[0].value === "number" ? (
-										<div className="rounded border bg-popover px-2 py-1.5 text-[10px] shadow-lg">
-											<p className="text-muted-foreground">
-												{new Date(label).toLocaleDateString("en-US", {
-													month: "short",
-													day: "numeric",
-												})}
-											</p>
-											<p className="font-semibold text-foreground">
-												{formatChartValue
-													? formatChartValue(payload[0].value)
-													: formatMetricNumber(payload[0].value)}{" "}
-												{title && (
-													<span className="font-normal text-muted-foreground">
-														{title}
-													</span>
-												)}
-											</p>
-										</div>
-									) : null
-								}
-								cursor={{ stroke: "var(--color-chart-1)", strokeOpacity: 0.3 }}
-							/>
-							<Area
-								activeDot={{
-									r: 2.5,
-									fill: "var(--color-chart-1)",
-									stroke: "var(--color-background)",
-									strokeWidth: 1.5,
-								}}
-								dataKey="value"
-								dot={false}
-								fill={`url(#gradient-${id})`}
-								stroke="var(--color-chart-1)"
-								strokeDasharray={strokeDashForValue}
-								strokeWidth={1.5}
-								type={chartStepType}
-							/>
-							<Customized component={DasharrayCalculator} />
-						</ComposedChart>
-					);
-				default:
-					return (
-						<ComposedChart
-							data={data}
-							margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-						>
-							<defs>
-								<linearGradient
-									id={`gradient-${id}`}
-									x1="0"
-									x2="0"
-									y1="0"
-									y2="1"
-								>
-									<stop
-										offset="0%"
-										stopColor="var(--color-chart-1)"
-										stopOpacity={0.4}
-									/>
-									<stop
-										offset="100%"
-										stopColor="var(--color-chart-1)"
-										stopOpacity={0}
-									/>
-								</linearGradient>
-							</defs>
-							<XAxis dataKey="date" hide />
-							<YAxis domain={["dataMin", "dataMax"]} hide />
-							<Tooltip
-								content={({ active, payload, label }) =>
-									active &&
-									payload?.[0] &&
-									typeof payload[0].value === "number" ? (
-										<div className="rounded border bg-popover px-2 py-1.5 text-[10px] shadow-lg">
-											<p className="text-muted-foreground">
-												{new Date(label).toLocaleDateString("en-US", {
-													month: "short",
-													day: "numeric",
-												})}
-											</p>
-											<p className="font-semibold text-foreground">
-												{formatChartValue
-													? formatChartValue(payload[0].value)
-													: formatMetricNumber(payload[0].value)}{" "}
-												{title && (
-													<span className="font-normal text-muted-foreground">
-														{title}
-													</span>
-												)}
-											</p>
-										</div>
-									) : null
-								}
-								cursor={{ stroke: "var(--color-chart-1)", strokeOpacity: 0.3 }}
-							/>
-							<Area
-								activeDot={{
-									r: 2.5,
-									fill: "var(--color-chart-1)",
-									stroke: "var(--color-background)",
-									strokeWidth: 1.5,
-								}}
-								dataKey="value"
-								dot={false}
-								fill={`url(#gradient-${id})`}
-								stroke="var(--color-chart-1)"
-								strokeDasharray={strokeDashForValue}
-								strokeWidth={1.5}
-								type={chartStepType}
-							/>
-							<Customized component={DasharrayCalculator} />
-						</ComposedChart>
-					);
-			}
-		};
-
+function MiniChart({
+	data,
+	id,
+	formatChartValue,
+	title,
+	chartType = "area",
+	chartStepType = "monotone",
+	partialLastSegment = true,
+}: {
+	data: MiniChartDataPoint[];
+	id: string;
+	formatChartValue?: (value: number) => string;
+	title?: string;
+	chartType?: ChartSeriesKind;
+	chartStepType?: ChartCurveType;
+	partialLastSegment?: boolean;
+}) {
+	if (!data.some((d) => d.value !== data[0].value)) {
 		return (
-			<ChartErrorBoundary fallbackClassName="h-[102px] w-full">
-				<ResponsiveContainer height={CHART_HEIGHT} width="100%">
-					{chartContent()}
-				</ResponsiveContainer>
-			</ChartErrorBoundary>
+			<div className="flex h-24 items-center pt-2">
+				<div className="h-px w-full bg-chart-1 opacity-30" />
+			</div>
 		);
 	}
-);
 
-MiniChart.displayName = "MiniChart";
-
-const CHART_HEIGHT = 102;
+	return (
+		<Chart.SingleSeries
+			curveType={chartStepType}
+			data={data}
+			fallbackClassName="h-[102px] w-full"
+			height={MINI_CHART_HEIGHT}
+			id={id}
+			partialLastSegment={partialLastSegment}
+			seriesKind={chartType}
+			tooltip={{ formatValue: formatChartValue, valueSuffixLabel: title }}
+		/>
+	);
+}
 
 const DURATION_REGEX = /\d+(\.\d+)?(s|ms)$/;
 
@@ -480,10 +165,8 @@ export function StatCard({
 	description,
 	icon: Icon,
 	trend,
-	trendLabel: _trendLabel,
 	isLoading = false,
 	className,
-	variant: _variant = "default",
 	invertTrend = false,
 	id,
 	chartData,
@@ -505,10 +188,7 @@ export function StatCard({
 
 	if (isLoading) {
 		return (
-			<Chart
-				className={cn("gap-0 overflow-hidden py-0", className)}
-				id={id}
-			>
+			<Chart className={cn("gap-0 overflow-hidden py-0", className)} id={id}>
 				{resolvedDisplayMode === "text" && (
 					<Chart.Plot className="flex h-26 items-center justify-center">
 						<Skeleton className="h-10 w-28 rounded" />
@@ -550,7 +230,7 @@ export function StatCard({
 	const cardContent = (
 		<Chart
 			className={cn(
-				"group gap-0 overflow-hidden py-0 hover:border-primary",
+				"group gap-0 overflow-visible py-0 hover:border-primary",
 				className
 			)}
 			id={id}
@@ -626,7 +306,6 @@ export function StatCard({
 			<HoverCard>
 				<HoverCardTrigger asChild>{cardContent}</HoverCardTrigger>
 				<HoverCardContent className="w-64 p-0" sideOffset={8}>
-					{/* Header */}
 					<div className="flex items-center gap-2.5 border-b bg-accent px-3 py-2.5">
 						{Icon && (
 							<div className="flex size-7 items-center justify-center rounded bg-background">
@@ -638,7 +317,6 @@ export function StatCard({
 						</span>
 					</div>
 
-					{/* Comparison */}
 					<div className="grid grid-cols-2 divide-x">
 						<div className="p-3">
 							<p className="font-medium text-muted-foreground text-xs">
@@ -666,7 +344,6 @@ export function StatCard({
 						</div>
 					</div>
 
-					{/* Footer */}
 					<div className="flex items-center justify-between border-t bg-accent px-3 py-2">
 						<span className="text-muted-foreground text-xs">Change</span>
 						<TrendIndicator

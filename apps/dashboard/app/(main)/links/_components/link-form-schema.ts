@@ -23,7 +23,7 @@ export const linkFormSchema = z.object({
 					return false;
 				}
 			},
-			{ message: "Please enter a valid URL" },
+			{ message: "Please enter a valid URL" }
 		),
 	slug: z
 		.string()
@@ -64,4 +64,9 @@ export const linkFormSchema = z.object({
 
 export type LinkFormData = z.infer<typeof linkFormSchema>;
 
-export type ExpandedSection = "expiration" | "devices" | "utm" | "social" | null;
+export type ExpandedSection =
+	| "expiration"
+	| "devices"
+	| "utm"
+	| "social"
+	| null;

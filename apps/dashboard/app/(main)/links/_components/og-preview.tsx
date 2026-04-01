@@ -69,7 +69,7 @@ export function OgPreview({
 		(field: keyof OgData, fieldValue: string) => {
 			onChange({ ...value, [field]: fieldValue });
 		},
-		[onChange, value],
+		[onChange, value]
 	);
 
 	const handleReset = useCallback(() => {
@@ -188,7 +188,7 @@ export function OgPreview({
 									className="size-10 text-muted-foreground/50"
 									weight="duotone"
 								/>
-								<p className="text-muted-foreground text-xs text-pretty">
+								<p className="text-pretty text-muted-foreground text-xs">
 									Enter a URL to generate preview
 								</p>
 							</div>
@@ -198,7 +198,7 @@ export function OgPreview({
 							<p className="line-clamp-1 font-medium text-sm">
 								{displayData.title || "No title"}
 							</p>
-							<p className="line-clamp-2 text-muted-foreground text-xs text-pretty">
+							<p className="line-clamp-2 text-pretty text-muted-foreground text-xs">
 								{displayData.description || "No description"}
 							</p>
 						</div>
@@ -328,7 +328,7 @@ export function OgPreview({
 							type="url"
 							value={value.ogImageUrl}
 						/>
-						<p className="text-muted-foreground text-xs text-pretty">
+						<p className="text-pretty text-muted-foreground text-xs">
 							Recommended: 1200 × 630 pixels (PNG or JPG)
 						</p>
 					</div>
@@ -349,7 +349,7 @@ export function OgPreview({
 							type="url"
 							value={value.ogVideoUrl}
 						/>
-						<p className="text-muted-foreground text-xs text-pretty">
+						<p className="text-pretty text-muted-foreground text-xs">
 							MP4 format recommended for best compatibility
 						</p>
 					</div>

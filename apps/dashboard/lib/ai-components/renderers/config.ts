@@ -1,4 +1,4 @@
-import type { ChartConfig } from "@/components/ui/chart";
+import type { ChartConfig } from "@/components/ui/composables/chart";
 
 export const CHART_COLORS = [
 	"#3b82f6", // blue-500

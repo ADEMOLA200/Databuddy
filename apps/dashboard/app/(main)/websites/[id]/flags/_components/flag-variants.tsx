@@ -1,12 +1,14 @@
 "use client";
 
 import type { Variant } from "@databuddy/shared/flags";
-import { Cell, Pie, PieChart } from "recharts";
+import { Chart } from "@/components/ui/composables/chart";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+const { Cell, Pie, PieChart } = Chart.Recharts;
 
 const VARIANT_COLORS = [
 	"#3b82f6",

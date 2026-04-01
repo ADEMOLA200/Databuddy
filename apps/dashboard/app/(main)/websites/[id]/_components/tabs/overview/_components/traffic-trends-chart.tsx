@@ -7,19 +7,6 @@ import { WarningCircleIcon } from "@phosphor-icons/react/dist/ssr/WarningCircle"
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAtom } from "jotai";
 import { useMemo, useState } from "react";
-import {
-	Area,
-	CartesianGrid,
-	ComposedChart,
-	Customized,
-	Legend,
-	ReferenceArea,
-	ReferenceLine,
-	ResponsiveContainer,
-	Tooltip,
-	XAxis,
-	YAxis,
-} from "recharts";
 import { toast } from "sonner";
 import { AnnotationModal } from "@/components/charts/annotation-modal";
 import { AnnotationsPanel } from "@/components/charts/annotations-panel";
@@ -44,6 +31,13 @@ import {
 	CHART_ANNOTATION_STYLES,
 } from "@/lib/annotation-constants";
 import { isSingleDayAnnotation } from "@/lib/annotation-utils";
+import {
+	chartAxisTickDefault,
+	chartCartesianGridDefault,
+	chartRechartsInteractiveLegendLabelClassName,
+	chartRechartsLegendIconSize,
+	chartRechartsLegendInteractiveWrapperStyle,
+} from "@/lib/chart-presentation";
 import { chartQueryOutcome } from "@/lib/chart-query-outcome";
 import dayjs from "@/lib/dayjs";
 import { formatLocaleNumber } from "@/lib/format-locale-number";
@@ -60,6 +54,20 @@ import type {
 	CreateAnnotationData,
 } from "@/types/annotations";
 import type { DateRange } from "../../../utils/types";
+
+const {
+	Area,
+	CartesianGrid,
+	ComposedChart,
+	Customized,
+	Legend,
+	ReferenceArea,
+	ReferenceLine,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
+} = Chart.Recharts;
 
 interface TooltipPayloadEntry {
 	dataKey: string;
@@ -394,12 +402,7 @@ export function TrafficTrendsRechartsPlot({
 	const [DasharrayCalculator, lineDasharrays] = useDynamicDasharray({
 		splitIndex: chartData.length - 2,
 		chartType: chartStepType,
-		curveAdjustment:
-			chartStepType === "step" ||
-			chartStepType === "stepBefore" ||
-			chartStepType === "stepAfter"
-				? 0
-				: 1,
+		curveAdjustment: Chart.isStepCurve(chartStepType) ? 0 : 1,
 	});
 
 	const handleMouseDown = (e: { activeLabel?: string }) => {
@@ -593,16 +596,11 @@ export function TrafficTrendsRechartsPlot({
 										</linearGradient>
 									))}
 								</defs>
-								<CartesianGrid
-									stroke="var(--sidebar-border)"
-									strokeDasharray="2 4"
-									strokeOpacity={0.3}
-									vertical={false}
-								/>
+								<CartesianGrid {...chartCartesianGridDefault} />
 								<XAxis
 									axisLine={false}
 									dataKey="xKey"
-									tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+									tick={chartAxisTickDefault}
 									tickFormatter={(value) =>
 										formatAxisTickLabel(String(value), granularity)
 									}
@@ -610,7 +608,7 @@ export function TrafficTrendsRechartsPlot({
 								/>
 								<YAxis
 									axisLine={false}
-									tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+									tick={chartAxisTickDefault}
 									tickLine={false}
 									width={45}
 								/>
@@ -820,17 +818,17 @@ export function TrafficTrendsRechartsPlot({
 												: false;
 											return (
 												<span
-													className={`cursor-pointer text-xs ${
+													className={chartRechartsInteractiveLegendLabelClassName(
 														isHidden
-															? "text-muted-foreground line-through opacity-50"
-															: "text-muted-foreground hover:text-foreground"
-													}`}
+													)}
 												>
 													{label}
 												</span>
 											);
 										}}
-										onClick={(payload: any) => {
+										iconSize={chartRechartsLegendIconSize}
+										iconType="circle"
+										onClick={(payload: { value?: string | number }) => {
 											const metric = metrics.find(
 												(m) => m.label === payload.value
 											);
@@ -839,7 +837,7 @@ export function TrafficTrendsRechartsPlot({
 											}
 										}}
 										verticalAlign="bottom"
-										wrapperStyle={{ paddingTop: "20px", fontSize: "12px" }}
+										wrapperStyle={chartRechartsLegendInteractiveWrapperStyle}
 									/>
 								)}
 								{metrics.map((metric) => (

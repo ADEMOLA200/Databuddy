@@ -96,7 +96,6 @@ export function LLMSecondaryKpis({
 				isLoading={isLoading}
 				title="Error Rate"
 				value={formatPercentage(kpis?.error_rate)}
-				variant="danger"
 			/>
 			<StatCard
 				displayMode="compact"
@@ -105,7 +104,6 @@ export function LLMSecondaryKpis({
 				isLoading={isLoading}
 				title="Cache Hit Rate"
 				value={formatPercentage(kpis?.cache_hit_rate)}
-				variant="success"
 			/>
 			<StatCard
 				displayMode="compact"

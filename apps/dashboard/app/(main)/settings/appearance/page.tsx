@@ -18,13 +18,13 @@ import {
 } from "@phosphor-icons/react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
-import type {
-	ChartStepType,
-	ChartType,
-} from "@/components/analytics/stat-card";
 import { StatCard } from "@/components/analytics/stat-card";
 import { RightSidebar } from "@/components/right-sidebar";
 import { Button } from "@/components/ui/button";
+import type {
+	ChartCurveType,
+	ChartSeriesKind,
+} from "@/components/ui/composables/chart";
 import { KeyboardShortcuts } from "@/components/ui/keyboard-shortcuts";
 import {
 	Select,
@@ -79,7 +79,7 @@ const THEME_OPTIONS = [
 ] as const;
 
 const CHART_TYPE_OPTIONS: {
-	id: ChartType;
+	id: ChartSeriesKind;
 	name: string;
 	icon: typeof ChartBarIcon;
 }[] = [
@@ -88,7 +88,7 @@ const CHART_TYPE_OPTIONS: {
 	{ id: "area", name: "Area", icon: StackIcon },
 ];
 
-const STEP_TYPE_OPTIONS: { id: ChartStepType; name: string }[] = [
+const STEP_TYPE_OPTIONS: { id: ChartCurveType; name: string }[] = [
 	{ id: "monotone", name: "Smooth" },
 	{ id: "linear", name: "Linear" },
 	{ id: "step", name: "Step" },
@@ -128,8 +128,8 @@ export default function AppearanceSettingsPage() {
 
 	// Get the "global" preference (first location as reference for "all")
 	const globalPrefs = preferences["overview-stats"] ?? {
-		chartType: "area" as ChartType,
-		chartStepType: "monotone" as ChartStepType,
+		chartType: "area" as ChartSeriesKind,
+		chartStepType: "monotone" as ChartCurveType,
 	};
 
 	const previewPrefs = showGranular
@@ -295,7 +295,7 @@ export default function AppearanceSettingsPage() {
 								<span className="font-medium text-sm">All Charts</span>
 								<div className="flex items-center gap-2">
 									<Select
-										onValueChange={(v: ChartType) =>
+										onValueChange={(v: ChartSeriesKind) =>
 											updateAllPreferences({ chartType: v })
 										}
 										value={globalPrefs.chartType}
@@ -314,7 +314,7 @@ export default function AppearanceSettingsPage() {
 									</Select>
 									<Select
 										disabled={isGlobalBar}
-										onValueChange={(v: ChartStepType) =>
+										onValueChange={(v: ChartCurveType) =>
 											updateAllPreferences({ chartStepType: v })
 										}
 										value={globalPrefs.chartStepType}
@@ -383,8 +383,8 @@ export default function AppearanceSettingsPage() {
 									</div>
 									{CHART_LOCATIONS.map((location, i) => {
 										const prefs = preferences[location] ?? {
-											chartType: "area" as ChartType,
-											chartStepType: "monotone" as ChartStepType,
+											chartType: "area" as ChartSeriesKind,
+											chartStepType: "monotone" as ChartCurveType,
 										};
 										const isBar = prefs.chartType === "bar";
 										const isActive = location === previewLocation;
@@ -423,7 +423,7 @@ export default function AppearanceSettingsPage() {
 													</span>
 												</div>
 												<Select
-													onValueChange={(v: ChartType) =>
+													onValueChange={(v: ChartSeriesKind) =>
 														updateLocationPreferences(location, {
 															chartType: v,
 														})
@@ -453,7 +453,7 @@ export default function AppearanceSettingsPage() {
 												</Select>
 												<Select
 													disabled={isBar}
-													onValueChange={(v: ChartStepType) =>
+													onValueChange={(v: ChartCurveType) =>
 														updateLocationPreferences(location, {
 															chartStepType: v,
 														})

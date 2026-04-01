@@ -1,26 +1,8 @@
 "use client";
 
-import {
-	Area,
-	AreaChart,
-	Bar,
-	BarChart,
-	Line,
-	LineChart,
-	ResponsiveContainer,
-	XAxis,
-	YAxis,
-} from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
-import { type ChartConfig, ChartContainer } from "@/components/ui/chart";
+import { Chart } from "@/components/ui/composables/chart";
 import { cn } from "@/lib/utils";
-
-const chartConfig = {
-	value: {
-		label: "Value",
-		color: "var(--color-chart-1)",
-	},
-} satisfies ChartConfig;
 
 const previewData = [
 	{ date: "Mon", value: 186 },
@@ -41,7 +23,14 @@ const ChartPreview = ({
 	size?: number;
 }) => {
 	const chartId = `chart-preview-${chartType}`;
-	const chartHeight = size - 16; // Account for padding
+	const chartHeight = size - 16;
+
+	const seriesKind =
+		chartType === "bar" || chartType === "composed"
+			? "bar"
+			: chartType === "line"
+				? "line"
+				: "area";
 
 	return (
 		<Card
@@ -52,125 +41,17 @@ const ChartPreview = ({
 			style={{ width: `${size}px`, height: `${size}px` }}
 		>
 			<CardContent className="flex size-full items-center justify-center p-2">
-				<ChartContainer className="size-full" config={chartConfig}>
-					<ResponsiveContainer height={chartHeight} width="100%">
-						{(() => {
-							switch (chartType) {
-								case "bar":
-									return (
-										<BarChart
-											data={previewData}
-											margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-										>
-											<defs>
-												<linearGradient
-													id={`gradient-${chartId}`}
-													x1="0"
-													x2="0"
-													y1="0"
-													y2="1"
-												>
-													<stop
-														offset="0%"
-														stopColor="var(--color-chart-1)"
-														stopOpacity={0.4}
-													/>
-													<stop
-														offset="100%"
-														stopColor="var(--color-chart-1)"
-														stopOpacity={0}
-													/>
-												</linearGradient>
-											</defs>
-											<XAxis dataKey="date" hide />
-											<YAxis domain={["dataMin", "dataMax"]} hide />
-											<Bar
-												dataKey="value"
-												fill={`url(#gradient-${chartId})`}
-												radius={[2, 2, 0, 0]}
-											/>
-										</BarChart>
-									);
-								case "line":
-									return (
-										<LineChart
-											data={previewData}
-											margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-										>
-											<XAxis dataKey="date" hide />
-											<YAxis domain={["dataMin", "dataMax"]} hide />
-											<Line
-												dataKey="value"
-												dot={false}
-												stroke="var(--color-chart-1)"
-												strokeWidth={1.5}
-												type="monotone"
-											/>
-										</LineChart>
-									);
-								case "area":
-									return (
-										<AreaChart
-											data={previewData}
-											margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-										>
-											<defs>
-												<linearGradient
-													id={`gradient-${chartId}`}
-													x1="0"
-													x2="0"
-													y1="0"
-													y2="1"
-												>
-													<stop
-														offset="0%"
-														stopColor="var(--color-chart-1)"
-														stopOpacity={0.4}
-													/>
-													<stop
-														offset="100%"
-														stopColor="var(--color-chart-1)"
-														stopOpacity={0}
-													/>
-												</linearGradient>
-											</defs>
-											<XAxis dataKey="date" hide />
-											<YAxis domain={["dataMin", "dataMax"]} hide />
-											<Area
-												activeDot={{
-													r: 2.5,
-													fill: "var(--color-chart-1)",
-													stroke: "var(--color-background)",
-													strokeWidth: 1.5,
-												}}
-												dataKey="value"
-												dot={false}
-												fill={`url(#gradient-${chartId})`}
-												stroke="var(--color-chart-1)"
-												strokeWidth={1.5}
-												type="monotone"
-											/>
-										</AreaChart>
-									);
-								default:
-									return (
-										<BarChart
-											data={previewData}
-											margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-										>
-											<XAxis dataKey="date" hide />
-											<YAxis domain={["dataMin", "dataMax"]} hide />
-											<Bar
-												dataKey="value"
-												fill="var(--color-chart-1)"
-												radius={[2, 2, 0, 0]}
-											/>
-										</BarChart>
-									);
-							}
-						})()}
-					</ResponsiveContainer>
-				</ChartContainer>
+				<div className="size-full">
+					<Chart.SingleSeries
+						color="var(--color-chart-1)"
+						data={previewData}
+						dataKey="value"
+						height={chartHeight}
+						id={chartId}
+						seriesKind={seriesKind}
+						tooltip={false}
+					/>
+				</div>
 			</CardContent>
 		</Card>
 	);

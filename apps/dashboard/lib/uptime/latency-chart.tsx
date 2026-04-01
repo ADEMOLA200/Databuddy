@@ -3,7 +3,16 @@
 import { CaretDownIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo } from "react";
+import { Chart } from "@/components/ui/composables/chart";
+import { Skeleton } from "@/components/ui/skeleton";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 import {
+	chartAxisTickDefault,
+	chartCartesianGridDefault,
+} from "@/lib/chart-presentation";
+import { cn } from "@/lib/utils";
+
+const {
 	Area,
 	AreaChart,
 	CartesianGrid,
@@ -11,14 +20,7 @@ import {
 	Tooltip,
 	XAxis,
 	YAxis,
-} from "recharts";
-import {
-	ChartTooltip,
-	createTooltipEntries,
-} from "@/components/ui/chart-tooltip";
-import { Skeleton } from "@/components/ui/skeleton";
-import { usePersistentState } from "@/hooks/use-persistent-state";
-import { cn } from "@/lib/utils";
+} = Chart.Recharts;
 
 interface LatencyDataPoint {
 	date: string;
@@ -285,11 +287,11 @@ function LatencyAreaChart({ data }: { data: ChartDataPoint[] }) {
 
 	return (
 		<div className="w-full" style={{ minHeight: CHART_BLOCK_MIN_PX }}>
-			<div className="h-36 w-full">
-				<ResponsiveContainer height={144} width="100%">
+			<div className="h-40 w-full min-w-0">
+				<ResponsiveContainer height={160} width="100%">
 					<AreaChart
 						data={data}
-						margin={{ top: 4, right: 0, left: -12, bottom: 0 }}
+						margin={{ top: 8, right: 4, left: 4, bottom: 22 }}
 					>
 						<defs>
 							{METRICS.map((m) => (
@@ -307,18 +309,14 @@ function LatencyAreaChart({ data }: { data: ChartDataPoint[] }) {
 							))}
 						</defs>
 
-						<CartesianGrid
-							stroke="var(--border)"
-							strokeOpacity={0.4}
-							vertical={false}
-						/>
+						<CartesianGrid {...chartCartesianGridDefault} />
 
 						<XAxis
 							axisLine={false}
 							dataKey="date"
 							interval="preserveStartEnd"
 							minTickGap={40}
-							tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+							tick={chartAxisTickDefault}
 							tickFormatter={(v: string) => formatTickDate(v, granularity)}
 							tickLine={false}
 							tickMargin={8}
@@ -327,7 +325,7 @@ function LatencyAreaChart({ data }: { data: ChartDataPoint[] }) {
 						<YAxis
 							axisLine={false}
 							domain={["dataMin", "auto"]}
-							tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+							tick={chartAxisTickDefault}
 							tickFormatter={formatMs}
 							tickLine={false}
 							width={52}
@@ -335,9 +333,9 @@ function LatencyAreaChart({ data }: { data: ChartDataPoint[] }) {
 
 						<Tooltip
 							content={({ active, payload, label }) => (
-								<ChartTooltip
+								<Chart.Tooltip
 									active={active}
-									entries={createTooltipEntries(
+									entries={Chart.createTooltipEntries(
 										payload as Array<{
 											dataKey: string;
 											value: number;
@@ -349,10 +347,7 @@ function LatencyAreaChart({ data }: { data: ChartDataPoint[] }) {
 									label={label}
 								/>
 							)}
-							cursor={{
-								stroke: "var(--border)",
-								strokeDasharray: "3 3",
-							}}
+							cursor={Chart.tooltipCursorLine}
 						/>
 
 						{METRICS.map((m) => (

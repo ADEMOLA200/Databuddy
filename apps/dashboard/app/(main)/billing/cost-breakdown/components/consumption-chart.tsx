@@ -1,27 +1,42 @@
 "use client";
 
-import type { UsageResponse } from "@databuddy/shared/types/billing";
+import type {
+	DailyUsageByTypeRow,
+	UsageResponse,
+} from "@databuddy/shared/types/billing";
 import { CalendarIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
+import { METRIC_COLORS } from "@/components/charts/metrics-constants";
+import { DateRangePicker } from "@/components/date-range-picker";
+import { EmptyState } from "@/components/empty-state";
+import { Button } from "@/components/ui/button";
+import { Chart } from "@/components/ui/composables/chart";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
+	chartAxisTickDefault,
+	chartCartesianGridDefault,
+	chartPlotRegionClassName,
+	chartRechartsInteractiveLegendLabelClassName,
+	chartRechartsLegendIconSize,
+	chartRechartsLegendInteractiveWrapperStyle,
+	chartTooltipCustomSurfaceClassName,
+	chartTooltipHeaderRowClassName,
+} from "@/lib/chart-presentation";
+import { cn } from "@/lib/utils";
+import { calculateOverageCost, type OverageInfo } from "../utils/billing-utils";
+
+type ViewMode = "daily" | "cumulative";
+
+const {
 	Bar,
 	BarChart,
+	CartesianGrid,
 	Legend,
 	ResponsiveContainer,
 	Tooltip,
 	XAxis,
 	YAxis,
-} from "recharts";
-import { DateRangePicker } from "@/components/date-range-picker";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { calculateOverageCost, type OverageInfo } from "../utils/billing-utils";
-
-type ViewMode = "daily" | "cumulative";
-
-import { METRIC_COLORS } from "@/components/charts/metrics-constants";
-import { EmptyState } from "@/components/empty-state";
-import { cn } from "@/lib/utils";
+} = Chart.Recharts;
 
 const EVENT_TYPE_COLORS = {
 	event: METRIC_COLORS.pageviews.primary, // blue
@@ -56,8 +71,10 @@ export function ConsumptionChart({
 		const dailyDataMap = new Map<string, Record<string, number>>();
 
 		// Initialize all dates with zero values for all event types
-		const allDates = [
-			...new Set(usageData.dailyUsageByType.map((row) => row.date)),
+		const allDates: string[] = [
+			...new Set(
+				usageData.dailyUsageByType.map((row: DailyUsageByTypeRow) => row.date)
+			),
 		].sort();
 		for (const date of allDates) {
 			dailyDataMap.set(date, {
@@ -89,7 +106,7 @@ export function ConsumptionChart({
 		const entries = Array.from(dailyDataMap.entries());
 
 		return entries.map(([date, eventCounts]) => {
-			const dayData: any = {
+			const dayData: Record<string, string | number> = {
 				date: new Date(date).toLocaleDateString("en-US", {
 					month: "short",
 					day: "numeric",
@@ -148,10 +165,10 @@ export function ConsumptionChart({
 
 	const maxValue = Math.max(
 		...chartData.map((d) =>
-			Object.keys(EVENT_TYPE_COLORS).reduce(
-				(sum, key) => sum + (d[key] || 0),
-				0
-			)
+			Object.keys(EVENT_TYPE_COLORS).reduce((sum, key) => {
+				const v = d[key];
+				return sum + (typeof v === "number" ? v : 0);
+			}, 0)
 		)
 	);
 	const yAxisMax = Math.ceil(maxValue * 1.1);
@@ -204,7 +221,7 @@ export function ConsumptionChart({
 					</div>
 				</div>
 			</div>
-			<div className="dotted-bg bg-accent/30 p-4 sm:p-6">
+			<div className={cn(chartPlotRegionClassName, "bg-accent/30 p-4 sm:p-6")}>
 				<div className="h-[350px]">
 					<ResponsiveContainer height="100%" width="100%">
 						<BarChart
@@ -229,24 +246,17 @@ export function ConsumptionChart({
 									</linearGradient>
 								))}
 							</defs>
+							<CartesianGrid {...chartCartesianGridDefault} />
 							<XAxis
 								axisLine={{ stroke: "var(--border)", strokeOpacity: 0.5 }}
 								dataKey="date"
-								tick={{
-									fontSize: 11,
-									fill: "var(--muted-foreground)",
-									fontWeight: 500,
-								}}
+								tick={{ ...chartAxisTickDefault, fontWeight: 500 }}
 								tickLine={false}
 							/>
 							<YAxis
 								axisLine={false}
 								domain={[0, yAxisMax]}
-								tick={{
-									fontSize: 11,
-									fill: "var(--muted-foreground)",
-									fontWeight: 500,
-								}}
+								tick={{ ...chartAxisTickDefault, fontWeight: 500 }}
 								tickFormatter={(value) => {
 									if (value >= 1_000_000) {
 										return `${(value / 1_000_000).toFixed(1)}M`;
@@ -261,10 +271,10 @@ export function ConsumptionChart({
 							/>
 							<Tooltip
 								content={({ active, payload, label }) => {
-									if (active && payload && payload.length) {
+									if (active && payload?.length) {
 										return (
-											<div className="min-w-[200px] rounded border border-border bg-popover p-3 shadow-lg">
-												<div className="mb-2 flex items-center gap-2 border-border border-b pb-2">
+											<div className={chartTooltipCustomSurfaceClassName()}>
+												<div className={chartTooltipHeaderRowClassName}>
 													<p className="font-semibold text-foreground text-sm">
 														{label}
 													</p>
@@ -304,7 +314,7 @@ export function ConsumptionChart({
 																				.replace("_", " ")}
 																		</span>
 																	</div>
-																	<div className="text-right">
+																	<div className="text-balance text-right">
 																		<div className="font-semibold text-foreground text-sm tabular-nums">
 																			{eventCount.toLocaleString()}
 																		</div>
@@ -323,12 +333,7 @@ export function ConsumptionChart({
 									}
 									return null;
 								}}
-								cursor={{
-									fill: "var(--muted)",
-									fillOpacity: 0.1,
-									stroke: "var(--chart-1)",
-									strokeOpacity: 0.2,
-								}}
+								cursor={Chart.tooltipCursorBar}
 								wrapperStyle={{ outline: "none" }}
 							/>
 							<Legend
@@ -339,17 +344,15 @@ export function ConsumptionChart({
 									return (
 										<span
 											className={cn(
-												"inline-flex select-none items-center font-medium text-xs capitalize leading-none transition-all duration-200",
-												isHidden
-													? "text-muted-foreground line-through decoration-1 opacity-40"
-													: "text-muted-foreground opacity-100"
+												"inline-flex select-none items-center capitalize leading-none transition-all duration-200",
+												chartRechartsInteractiveLegendLabelClassName(isHidden)
 											)}
 										>
 											{key.replace("_", " ")}
 										</span>
 									);
 								}}
-								iconSize={10}
+								iconSize={chartRechartsLegendIconSize}
 								iconType="circle"
 								layout="horizontal"
 								onClick={(payload) => {
@@ -365,15 +368,7 @@ export function ConsumptionChart({
 									setHiddenTypes((prev) => ({ ...prev, [key]: !prev[key] }));
 								}}
 								verticalAlign="bottom"
-								wrapperStyle={{
-									display: "flex",
-									justifyContent: "center",
-									gap: 12,
-									fontSize: "12px",
-									paddingTop: "20px",
-									fontWeight: 500,
-									cursor: "pointer",
-								}}
+								wrapperStyle={chartRechartsLegendInteractiveWrapperStyle}
 							/>
 							{Object.keys(EVENT_TYPE_COLORS).map((eventType) => (
 								<Bar

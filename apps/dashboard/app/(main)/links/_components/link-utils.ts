@@ -102,7 +102,7 @@ export function buildLinkPayload({
 }: BuildPayloadInput): LinkPayload {
 	const targetUrl = appendUtmToUrl(
 		ensureProtocol(formData.targetUrl),
-		utmParams,
+		utmParams
 	);
 
 	const slug = formData.slug?.trim() || undefined;

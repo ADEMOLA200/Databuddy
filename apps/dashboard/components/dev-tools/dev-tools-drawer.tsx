@@ -31,9 +31,9 @@ import { useTheme } from "next-themes";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type {
-	ChartStepType,
-	ChartType,
-} from "@/components/analytics/stat-card";
+	ChartCurveType,
+	ChartSeriesKind,
+} from "@/components/ui/composables/chart";
 import {
 	CHART_LOCATION_LABELS,
 	CHART_LOCATIONS,
@@ -724,7 +724,7 @@ const THEME_OPTIONS = [
 ] as const;
 
 const CHART_TYPE_OPTIONS: {
-	id: ChartType;
+	id: ChartSeriesKind;
 	name: string;
 	icon: typeof ChartBarIcon;
 }[] = [
@@ -733,7 +733,7 @@ const CHART_TYPE_OPTIONS: {
 	{ id: "area", name: "Area", icon: StackIcon },
 ];
 
-const STEP_TYPE_OPTIONS: { id: ChartStepType; name: string }[] = [
+const STEP_TYPE_OPTIONS: { id: ChartCurveType; name: string }[] = [
 	{ id: "monotone", name: "Smooth" },
 	{ id: "linear", name: "Linear" },
 	{ id: "step", name: "Step" },
@@ -766,8 +766,8 @@ function AppearanceSettings() {
 
 	const currentTheme = theme ?? "system";
 	const globalPrefs = preferences["overview-stats"] ?? {
-		chartType: "area" as ChartType,
-		chartStepType: "monotone" as ChartStepType,
+		chartType: "area" as ChartSeriesKind,
+		chartStepType: "monotone" as ChartCurveType,
 	};
 	const isGlobalBar = globalPrefs.chartType === "bar";
 
@@ -810,7 +810,7 @@ function AppearanceSettings() {
 						<span className="text-muted-foreground text-xs">All Charts</span>
 						<div className="flex items-center gap-2">
 							<Select
-								onValueChange={(v: ChartType) =>
+								onValueChange={(v: ChartSeriesKind) =>
 									updateAllPreferences({ chartType: v })
 								}
 								value={globalPrefs.chartType}
@@ -831,7 +831,7 @@ function AppearanceSettings() {
 							</Select>
 							<Select
 								disabled={isGlobalBar}
-								onValueChange={(v: ChartStepType) =>
+								onValueChange={(v: ChartCurveType) =>
 									updateAllPreferences({ chartStepType: v })
 								}
 								value={globalPrefs.chartStepType}
@@ -875,8 +875,8 @@ function AppearanceSettings() {
 						<div className="mt-2 space-y-1 border-t pt-2">
 							{CHART_LOCATIONS.map((location) => {
 								const prefs = preferences[location] ?? {
-									chartType: "area" as ChartType,
-									chartStepType: "monotone" as ChartStepType,
+									chartType: "area" as ChartSeriesKind,
+									chartStepType: "monotone" as ChartCurveType,
 								};
 								const isBar = prefs.chartType === "bar";
 								const Icon = LOCATION_ICONS[location];
@@ -897,7 +897,7 @@ function AppearanceSettings() {
 										</div>
 										<div className="flex items-center gap-1">
 											<Select
-												onValueChange={(v: ChartType) =>
+												onValueChange={(v: ChartSeriesKind) =>
 													updateLocationPreferences(location, {
 														chartType: v,
 													})
@@ -929,7 +929,7 @@ function AppearanceSettings() {
 											</Select>
 											<Select
 												disabled={isBar}
-												onValueChange={(v: ChartStepType) =>
+												onValueChange={(v: ChartCurveType) =>
 													updateLocationPreferences(location, {
 														chartStepType: v,
 													})

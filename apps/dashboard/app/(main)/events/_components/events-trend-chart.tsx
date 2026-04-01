@@ -8,7 +8,26 @@ import {
 	ListBulletsIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useMemo, useState } from "react";
+import { METRIC_COLORS } from "@/components/charts/metrics-constants";
+import { useDynamicDasharray } from "@/components/charts/use-dynamic-dasharray";
+import { TableEmptyState } from "@/components/table/table-empty-state";
+import { Button } from "@/components/ui/button";
+import { Chart } from "@/components/ui/composables/chart";
+import { InlineToggle } from "@/components/ui/inline-toggle";
 import {
+	chartAxisTickDefault,
+	chartAxisYWidthCompact,
+	chartCartesianGridDefault,
+	chartRechartsInteractiveLegendLabelClassName,
+	chartRechartsLegendIconSize,
+	chartRechartsLegendInteractiveWrapperStyle,
+	chartRechartsLegendStaticLabelClassName,
+	chartRechartsLegendStaticWrapperStyleMerge,
+	chartTooltipHeaderRowClassName,
+	chartTooltipMultiShellClassName,
+} from "@/lib/chart-presentation";
+
+const {
 	Area,
 	Bar,
 	CartesianGrid,
@@ -20,12 +39,7 @@ import {
 	Tooltip,
 	XAxis,
 	YAxis,
-} from "recharts";
-import { METRIC_COLORS } from "@/components/charts/metrics-constants";
-import { useDynamicDasharray } from "@/components/charts/use-dynamic-dasharray";
-import { TableEmptyState } from "@/components/table/table-empty-state";
-import { Button } from "@/components/ui/button";
-import { InlineToggle } from "@/components/ui/inline-toggle";
+} = Chart.Recharts;
 
 export const EVENT_COLORS = [
 	"#2E27F5",
@@ -90,10 +104,10 @@ function ChartTooltip({
 	const sorted = [...payload].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
 
 	return (
-		<div className="min-w-[160px] rounded border bg-popover p-2.5 shadow-lg">
+		<div className={chartTooltipMultiShellClassName}>
 			{label && (
-				<div className="mb-2 flex items-center gap-2 border-b pb-2">
-					<div className="size-1.5 animate-pulse rounded-full bg-chart-1" />
+				<div className={chartTooltipHeaderRowClassName}>
+					<div className="size-1.5 shrink-0 rounded-full bg-chart-1" />
 					<p className="font-medium text-foreground text-xs">{label}</p>
 				</div>
 			)}
@@ -126,13 +140,6 @@ function ChartTooltip({
 	);
 }
 
-const AXIS_TICK = { fontSize: 10, fill: "var(--muted-foreground)" };
-const GRID_PROPS = {
-	stroke: "var(--border)",
-	strokeDasharray: "3 3",
-	strokeOpacity: 0.5,
-	vertical: false,
-} as const;
 const TOOLTIP_WRAPPER = {
 	outline: "none",
 	zIndex: 10,
@@ -461,21 +468,21 @@ export function EventsTrendChart({
 									/>
 								</linearGradient>
 							</defs>
-							<CartesianGrid {...GRID_PROPS} />
+							<CartesianGrid {...chartCartesianGridDefault} />
 							<XAxis
 								axisLine={false}
 								dataKey="date"
 								dy={5}
-								tick={AXIS_TICK}
+								tick={chartAxisTickDefault}
 								tickLine={false}
 							/>
 							<YAxis
 								allowDecimals={false}
 								axisLine={false}
-								tick={AXIS_TICK}
+								tick={chartAxisTickDefault}
 								tickFormatter={formatYTick}
 								tickLine={false}
-								width={40}
+								width={chartAxisYWidthCompact}
 							/>
 							<Tooltip
 								content={
@@ -506,31 +513,37 @@ export function EventsTrendChart({
 										const isHidden = hiddenEvents.has(label);
 										return (
 											<span
-												className={`cursor-pointer text-xs ${
+												className={chartRechartsInteractiveLegendLabelClassName(
 													isHidden
-														? "text-muted-foreground line-through opacity-50"
-														: "text-muted-foreground hover:text-foreground"
-												}`}
+												)}
 											>
 												{label}
 											</span>
 										);
 									}}
-									iconSize={8}
+									iconSize={chartRechartsLegendIconSize}
 									iconType="circle"
 									onClick={(p: { value: string }) => toggleEvent(p.value)}
 									verticalAlign="bottom"
-									wrapperStyle={{ paddingTop: "12px", fontSize: "12px" }}
+									wrapperStyle={{
+										...chartRechartsLegendInteractiveWrapperStyle,
+										paddingTop: "12px",
+									}}
 								/>
 							)}
 							{!isByEvent && (
 								<Legend
-									iconSize={8}
+									formatter={(value) => (
+										<span className={chartRechartsLegendStaticLabelClassName}>
+											{value}
+										</span>
+									)}
+									iconSize={chartRechartsLegendIconSize}
 									iconType="circle"
-									wrapperStyle={{
-										fontSize: "10px",
-										paddingTop: "5px",
-									}}
+									verticalAlign="bottom"
+									wrapperStyle={chartRechartsLegendStaticWrapperStyleMerge({
+										paddingTop: "12px",
+									})}
 								/>
 							)}
 							{isByEvent &&

@@ -108,7 +108,7 @@ export function LinkStatsContent() {
 
 	const { data: stats, isLoading: isLoadingStats } = useLinkStats(
 		linkId,
-		dateRange,
+		dateRange
 	);
 
 	const isLoading = isLoadingLink || isLoadingStats;
@@ -125,46 +125,46 @@ export function LinkStatsContent() {
 
 	const clicksChartData = useMemo<MiniChartDataPoint[]>(
 		() => chartData.map((day) => ({ date: day.date, value: day.clicks })),
-		[chartData],
+		[chartData]
 	);
 
 	const referrersChartData = useMemo<MiniChartDataPoint[]>(
 		() => stats?.referrersByDay ?? [],
-		[stats?.referrersByDay],
+		[stats?.referrersByDay]
 	);
 
 	const countriesChartData = useMemo<MiniChartDataPoint[]>(
 		() => stats?.countriesByDay ?? [],
-		[stats?.countriesByDay],
+		[stats?.countriesByDay]
 	);
 
 	const todayClicks = useMemo(() => {
 		const today = dayjs().format("YYYY-MM-DD");
 		const todayData = chartData.find(
-			(day) => dayjs(day.date).format("YYYY-MM-DD") === today,
+			(day) => dayjs(day.date).format("YYYY-MM-DD") === today
 		);
 		return todayData?.clicks ?? 0;
 	}, [chartData]);
 
 	const referrerData = useMemo<SourceEntry[]>(
 		() => stats?.topReferrers ?? [],
-		[stats?.topReferrers],
+		[stats?.topReferrers]
 	);
 	const countryData = useMemo<GeoEntry[]>(
 		() => stats?.topCountries ?? [],
-		[stats?.topCountries],
+		[stats?.topCountries]
 	);
 	const regionData = useMemo<GeoEntry[]>(
 		() => stats?.topRegions ?? [],
-		[stats?.topRegions],
+		[stats?.topRegions]
 	);
 	const cityData = useMemo<GeoEntry[]>(
 		() => stats?.topCities ?? [],
-		[stats?.topCities],
+		[stats?.topCities]
 	);
 	const deviceData = useMemo<SourceEntry[]>(
 		() => stats?.topDevices ?? [],
-		[stats?.topDevices],
+		[stats?.topDevices]
 	);
 
 	const referrerColumns = useMemo(() => createReferrerColumns(), []);
@@ -175,19 +175,46 @@ export function LinkStatsContent() {
 
 	const sourceTabs = useMemo(
 		() => [
-			{ id: "referrers", label: "Referrers", data: referrerData, columns: referrerColumns },
-			{ id: "devices", label: "Devices", data: deviceData, columns: deviceColumns },
+			{
+				id: "referrers",
+				label: "Referrers",
+				data: referrerData,
+				columns: referrerColumns,
+			},
+			{
+				id: "devices",
+				label: "Devices",
+				data: deviceData,
+				columns: deviceColumns,
+			},
 		],
-		[referrerData, referrerColumns, deviceData, deviceColumns],
+		[referrerData, referrerColumns, deviceData, deviceColumns]
 	);
 
 	const geoTabs = useMemo(
 		() => [
-			{ id: "countries", label: "Countries", data: countryData, columns: countryColumns },
-			{ id: "regions", label: "Regions", data: regionData, columns: regionColumns },
+			{
+				id: "countries",
+				label: "Countries",
+				data: countryData,
+				columns: countryColumns,
+			},
+			{
+				id: "regions",
+				label: "Regions",
+				data: regionData,
+				columns: regionColumns,
+			},
 			{ id: "cities", label: "Cities", data: cityData, columns: cityColumns },
 		],
-		[countryData, regionData, cityData, countryColumns, regionColumns, cityColumns],
+		[
+			countryData,
+			regionData,
+			cityData,
+			countryColumns,
+			regionColumns,
+			cityColumns,
+		]
 	);
 
 	if (isLoading) {

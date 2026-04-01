@@ -93,7 +93,7 @@ export function createReferrerColumns(): ColumnDef<SourceEntry>[] {
 }
 
 export function createGeoColumns(
-	type: "country" | "region" | "city",
+	type: "country" | "region" | "city"
 ): ColumnDef<GeoEntry>[] {
 	return [
 		{

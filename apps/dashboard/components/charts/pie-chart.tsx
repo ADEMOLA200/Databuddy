@@ -2,11 +2,13 @@
 
 import { ChartPieIcon } from "@phosphor-icons/react";
 import { memo, useCallback, useState } from "react";
-import { Cell, Pie, PieChart, ResponsiveContainer, Sector } from "recharts";
 import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 import { Card } from "@/components/ui/card";
+import { Chart } from "@/components/ui/composables/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+
+const { Cell, Pie, PieChart, ResponsiveContainer, Sector } = Chart.Recharts;
 
 const CHART_COLORS = [
 	"var(--color-chart-1)",

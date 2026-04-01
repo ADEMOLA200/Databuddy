@@ -3,7 +3,21 @@
 import { ChartLineIcon } from "@phosphor-icons/react/dist/ssr/ChartLine";
 import { SpinnerIcon } from "@phosphor-icons/react/dist/ssr/Spinner";
 import { useMemo } from "react";
+import { EmptyState } from "@/components/empty-state";
+import { Chart } from "@/components/ui/composables/chart";
 import {
+	chartAxisTickDefault,
+	chartAxisYWidthDefault,
+	chartCartesianGridDefault,
+	chartLegendInlineItemClassName,
+	chartLegendInlineRowClassName,
+	chartLegendPillDotClassName,
+	chartLegendPillLabelClassName,
+} from "@/lib/chart-presentation";
+import dayjs from "@/lib/dayjs";
+import { cn } from "@/lib/utils";
+
+const {
 	Area,
 	AreaChart,
 	CartesianGrid,
@@ -11,9 +25,7 @@ import {
 	Tooltip,
 	XAxis,
 	YAxis,
-} from "recharts";
-import { EmptyState } from "@/components/empty-state";
-import dayjs from "@/lib/dayjs";
+} = Chart.Recharts;
 
 interface RetentionRate {
 	date: string;
@@ -138,11 +150,10 @@ export function RetentionRateChart({
 
 	return (
 		<div className="flex h-full flex-col gap-3 p-4">
-			{/* Legend */}
-			<div className="flex items-center gap-4">
-				<div className="flex items-center gap-2">
-					<div className="size-2.5 rounded-full bg-chart-1" />
-					<span className="text-muted-foreground text-xs">
+			<div className={chartLegendInlineRowClassName}>
+				<div className={chartLegendInlineItemClassName}>
+					<div className={cn(chartLegendPillDotClassName, "bg-chart-1")} />
+					<span className={chartLegendPillLabelClassName}>
 						Daily Retention Rate
 					</span>
 				</div>
@@ -180,30 +191,22 @@ export function RetentionRateChart({
 								/>
 							</linearGradient>
 						</defs>
-						<CartesianGrid
-							stroke="var(--color-border)"
-							strokeDasharray="3 3"
-							strokeOpacity={0.4}
-							vertical={false}
-						/>
+						<CartesianGrid {...chartCartesianGridDefault} />
 						<XAxis
 							axisLine={false}
 							dataKey="date"
 							dy={8}
 							interval="preserveStartEnd"
-							tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+							tick={chartAxisTickDefault}
 							tickLine={false}
 						/>
 						<YAxis
 							axisLine={false}
 							domain={[0, maxRetention]}
-							tick={{
-								fontSize: 11,
-								fill: "var(--color-muted-foreground)",
-							}}
+							tick={chartAxisTickDefault}
 							tickFormatter={(value) => `${value}%`}
 							tickLine={false}
-							width={42}
+							width={chartAxisYWidthDefault}
 						/>
 						<Tooltip content={<CustomTooltip />} />
 						<Area

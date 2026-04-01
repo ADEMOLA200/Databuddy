@@ -39,7 +39,7 @@ async function fetchOgData(url: string): Promise<FetchedOgData> {
 	const fullUrl = url.startsWith("http") ? url : `https://${url}`;
 
 	const response = await fetch(
-		`https://api.microlink.io?url=${encodeURIComponent(fullUrl)}`,
+		`https://api.microlink.io?url=${encodeURIComponent(fullUrl)}`
 	);
 
 	if (!response.ok) {

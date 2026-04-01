@@ -7,7 +7,7 @@ export type SortOption = "newest" | "oldest" | "name-asc" | "name-desc";
 export function useFilteredLinks(
 	links: Link[],
 	searchQuery: string,
-	sortBy: SortOption,
+	sortBy: SortOption
 ): Link[] {
 	const [debouncedSearch] = useDebouncedValue(searchQuery, { wait: 200 });
 
@@ -21,7 +21,7 @@ export function useFilteredLinks(
 					link.name.toLowerCase().includes(query) ||
 					link.slug.toLowerCase().includes(query) ||
 					link.targetUrl.toLowerCase().includes(query) ||
-					(link.externalId?.toLowerCase().includes(query) ?? false),
+					(link.externalId?.toLowerCase().includes(query) ?? false)
 			);
 		}
 
@@ -29,13 +29,13 @@ export function useFilteredLinks(
 			case "newest":
 				result.sort(
 					(a, b) =>
-						new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+						new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 				);
 				break;
 			case "oldest":
 				result.sort(
 					(a, b) =>
-						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
 				);
 				break;
 			case "name-asc":

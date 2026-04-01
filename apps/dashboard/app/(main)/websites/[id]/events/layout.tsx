@@ -28,11 +28,11 @@ export default function EventsLayout({
 					currentPage={decodedEventName}
 					variant="breadcrumb"
 				/>
-			<div className="min-h-0 flex-1 overflow-y-auto overscroll-none">
-				{children}
+				<div className="min-h-0 flex-1 overflow-y-auto overscroll-none">
+					{children}
+				</div>
 			</div>
-		</div>
-	);
+		);
 	}
 
 	return (

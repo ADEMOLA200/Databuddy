@@ -1,17 +1,13 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import {
-	Cell,
-	Pie,
-	PieChart,
-	ResponsiveContainer,
-	Sector,
-	Tooltip,
-} from "recharts";
 import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 import { Card } from "@/components/ui/card";
+import { Chart } from "@/components/ui/composables/chart";
 import type { ChartComponentProps } from "../../types";
+
+const { Cell, Pie, PieChart, ResponsiveContainer, Sector, Tooltip } =
+	Chart.Recharts;
 
 const COLORS = [
 	"#3b82f6", // Blue
@@ -89,7 +85,7 @@ export function DistributionRenderer({
 						<PieChart>
 							<Pie
 								activeIndex={activeIndex}
-								activeShape={renderActiveShape}
+								activeShape={renderActiveShape as never}
 								cx="50%"
 								cy="50%"
 								data={data}

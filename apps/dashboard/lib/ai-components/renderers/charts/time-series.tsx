@@ -1,7 +1,14 @@
 "use client";
 
 import { useId } from "react";
-import {
+import { ChartErrorBoundary } from "@/components/chart-error-boundary";
+import { Card } from "@/components/ui/card";
+import { Chart } from "@/components/ui/composables/chart";
+import { CHART_COLORS } from "@/lib/ai-components/renderers/config";
+import dayjs from "@/lib/dayjs";
+import type { ChartComponentProps } from "../../types";
+
+const {
 	Area,
 	AreaChart,
 	Bar,
@@ -12,12 +19,7 @@ import {
 	Tooltip,
 	XAxis,
 	YAxis,
-} from "recharts";
-import { ChartErrorBoundary } from "@/components/chart-error-boundary";
-import { Card } from "@/components/ui/card";
-import { CHART_COLORS } from "@/lib/ai-components/renderers/config";
-import dayjs from "@/lib/dayjs";
-import type { ChartComponentProps } from "../../types";
+} = Chart.Recharts;
 
 export interface TimeSeriesProps extends ChartComponentProps {
 	variant: "line" | "bar" | "area" | "stacked-bar";

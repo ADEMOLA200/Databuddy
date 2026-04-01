@@ -1,22 +1,21 @@
 import { PieChartIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import {
-	Cell,
-	Legend,
-	Pie,
-	PieChart,
-	ResponsiveContainer,
-	Sector,
-	Tooltip,
-} from "recharts";
-import {
 	Card,
 	CardContent,
 	CardDescription,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Chart } from "@/components/ui/composables/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+	chartRechartsLegendIconSize,
+	chartRechartsLegendStaticWrapperStyleMerge,
+} from "@/lib/chart-presentation";
+
+const { Cell, Legend, Pie, PieChart, ResponsiveContainer, Sector, Tooltip } =
+	Chart.Recharts;
 
 // Simple color palette
 const COLORS = [
@@ -230,21 +229,29 @@ export function DistributionChart({
 							/>
 							<Legend
 								align="center"
-								formatter={(value: string, entry: any) => {
+								formatter={(
+									value: string,
+									entry: { payload?: { percent?: number } }
+								) => {
 									const item = entry.payload;
-									const percentage = item.percent
+									const percentage = item?.percent
 										? ` (${(item.percent * 100).toFixed(0)}%)`
 										: "";
 									return (
-										<span className="text-xs">
+										<span className="text-pretty text-muted-foreground text-xs">
 											{value}
 											{percentage}
 										</span>
 									);
 								}}
+								iconSize={chartRechartsLegendIconSize}
+								iconType="circle"
 								layout="horizontal"
 								verticalAlign="bottom"
-								wrapperStyle={{ fontSize: "10px", bottom: 0 }}
+								wrapperStyle={chartRechartsLegendStaticWrapperStyleMerge({
+									bottom: 0,
+									paddingTop: "12px",
+								})}
 							/>
 						</PieChart>
 					</ResponsiveContainer>

@@ -4,27 +4,36 @@ import { ArrowCounterClockwiseIcon } from "@phosphor-icons/react/dist/ssr/ArrowC
 import { BugIcon } from "@phosphor-icons/react/dist/ssr/Bug";
 import dynamic from "next/dynamic";
 import { useCallback, useState } from "react";
-import {
-	Area,
-	CartesianGrid,
-	Legend,
-	ReferenceArea,
-	Tooltip,
-	XAxis,
-	YAxis,
-} from "recharts";
 import { METRIC_COLORS, METRICS } from "@/components/charts/metrics-constants";
 import { TableEmptyState } from "@/components/table/table-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Chart } from "@/components/ui/composables/chart";
+import {
+	chartAxisTickDefault,
+	chartAxisYWidthCompact,
+	chartCartesianGridDefault,
+	chartRechartsLegendIconSize,
+	chartRechartsLegendStaticLabelClassName,
+	chartRechartsLegendStaticWrapperStyleMerge,
+} from "@/lib/chart-presentation";
 import { ErrorChartTooltip } from "./error-chart-tooltip";
 
+const { Area, CartesianGrid, Legend, ReferenceArea, Tooltip, XAxis, YAxis } =
+	Chart.Recharts;
+
 const ResponsiveContainer = dynamic(
-	() => import("recharts").then((mod) => mod.ResponsiveContainer),
+	() =>
+		import("@/components/ui/composables/chart").then(
+			(mod) => mod.Chart.Recharts.ResponsiveContainer
+		),
 	{ ssr: false }
 );
 const AreaChart = dynamic(
-	() => import("recharts").then((mod) => mod.AreaChart),
+	() =>
+		import("@/components/ui/composables/chart").then(
+			(mod) => mod.Chart.Recharts.AreaChart
+		),
 	{ ssr: false }
 );
 
@@ -261,22 +270,17 @@ export const ErrorTrendsChart = ({ errorChartData }: ErrorTrendsChartProps) => {
 									/>
 								</linearGradient>
 							</defs>
-							<CartesianGrid
-								stroke="var(--border)"
-								strokeDasharray="3 3"
-								strokeOpacity={0.5}
-								vertical={false}
-							/>
+							<CartesianGrid {...chartCartesianGridDefault} />
 							<XAxis
 								axisLine={false}
 								dataKey="date"
 								dy={5}
-								tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+								tick={chartAxisTickDefault}
 								tickLine={false}
 							/>
 							<YAxis
 								axisLine={false}
-								tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+								tick={chartAxisTickDefault}
 								tickFormatter={(value) => {
 									if (value >= 1_000_000) {
 										return `${(value / 1_000_000).toFixed(1)}M`;
@@ -287,20 +291,23 @@ export const ErrorTrendsChart = ({ errorChartData }: ErrorTrendsChartProps) => {
 									return value.toString();
 								}}
 								tickLine={false}
-								width={30}
+								width={chartAxisYWidthCompact}
 							/>
 							<Tooltip
 								content={<ErrorChartTooltip />}
 								wrapperStyle={{ outline: "none" }}
 							/>
 							<Legend
-								iconSize={8}
+								formatter={(value) => (
+									<span className={chartRechartsLegendStaticLabelClassName}>
+										{value}
+									</span>
+								)}
+								iconSize={chartRechartsLegendIconSize}
 								iconType="circle"
-								wrapperStyle={{
-									fontSize: "10px",
-									paddingTop: "5px",
+								wrapperStyle={chartRechartsLegendStaticWrapperStyleMerge({
 									bottom: displayData.length > 5 ? 20 : 0,
-								}}
+								})}
 							/>
 							{refAreaLeft && refAreaRight && (
 								<ReferenceArea

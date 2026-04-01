@@ -1,7 +1,7 @@
 import type {
-	ChartStepType,
-	ChartType,
-} from "@/components/analytics/stat-card";
+	ChartCurveType,
+	ChartSeriesKind,
+} from "@/components/ui/composables/chart";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 
 const CHART_PREFERENCES_STORAGE_KEY = "databuddy-chart-preferences";
@@ -48,14 +48,14 @@ export const CHART_LOCATION_DESCRIPTIONS: Record<ChartLocation, string> = {
 	llm: "Stat cards in the LLM analytics section",
 };
 
-function isValidChartType(value: unknown): value is ChartType {
+function isValidChartSeriesKind(value: unknown): value is ChartSeriesKind {
 	return (
 		typeof value === "string" &&
 		(value === "bar" || value === "line" || value === "area")
 	);
 }
 
-function isValidStepType(value: unknown): value is ChartStepType {
+function isValidStepType(value: unknown): value is ChartCurveType {
 	return (
 		typeof value === "string" &&
 		(value === "monotone" ||
@@ -67,8 +67,8 @@ function isValidStepType(value: unknown): value is ChartStepType {
 }
 
 interface LocationPreferences {
-	chartType: ChartType;
-	chartStepType: ChartStepType;
+	chartType: ChartSeriesKind;
+	chartStepType: ChartCurveType;
 }
 
 type AllPreferences = Partial<Record<ChartLocation, LocationPreferences>>;
@@ -85,7 +85,7 @@ function isValidPreferences(value: unknown): value is AllPreferences {
 			return false;
 		}
 		return (
-			isValidChartType(val.chartType) && isValidStepType(val.chartStepType)
+			isValidChartSeriesKind(val.chartType) && isValidStepType(val.chartStepType)
 		);
 	});
 }
@@ -115,8 +115,8 @@ export function useChartPreferences(location: ChartLocation) {
 		: getDefaultPreferences();
 
 	const locationPrefs = allPreferences[location] ?? {
-		chartType: "area" as ChartType,
-		chartStepType: "monotone" as ChartStepType,
+		chartType: "area" as ChartSeriesKind,
+		chartStepType: "monotone" as ChartCurveType,
 	};
 
 	return {
@@ -161,8 +161,8 @@ export function useAllChartPreferences() {
 			const updated: AllPreferences = {};
 			for (const location of CHART_LOCATIONS) {
 				const currentLocation = current[location] ?? {
-					chartType: "area" as ChartType,
-					chartStepType: "monotone" as ChartStepType,
+					chartType: "area" as ChartSeriesKind,
+					chartStepType: "monotone" as ChartCurveType,
 				};
 				updated[location] = {
 					chartType: preferences.chartType ?? currentLocation.chartType,

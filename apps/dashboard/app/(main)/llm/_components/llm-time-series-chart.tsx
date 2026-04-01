@@ -2,7 +2,25 @@
 
 import { ChartLineIcon } from "@phosphor-icons/react/dist/ssr/ChartLine";
 import { useCallback, useState } from "react";
+import { SkeletonChart } from "@/components/charts/skeleton-chart";
+import { Chart } from "@/components/ui/composables/chart";
 import {
+	chartAxisTickDefault,
+	chartAxisYWidthDefault,
+	chartCartesianGridDefault,
+	chartRechartsInteractiveLegendLabelClassName,
+	chartRechartsLegendIconSize,
+	chartRechartsLegendInteractiveWrapperStyle,
+	chartSurfaceBorderlessClassName,
+} from "@/lib/chart-presentation";
+import {
+	formatCurrency,
+	formatDuration,
+	formatNumber,
+	type LLMTimeSeriesData,
+} from "./llm-types";
+
+const {
 	Area,
 	CartesianGrid,
 	ComposedChart,
@@ -11,15 +29,7 @@ import {
 	Tooltip,
 	XAxis,
 	YAxis,
-} from "recharts";
-import { SkeletonChart } from "@/components/charts/skeleton-chart";
-import { cn } from "@/lib/utils";
-import {
-	formatCurrency,
-	formatDuration,
-	formatNumber,
-	type LLMTimeSeriesData,
-} from "./llm-types";
+} = Chart.Recharts;
 
 interface MetricConfig {
 	key: string;
@@ -206,7 +216,7 @@ export function LLMTimeSeriesChart({
 			</div>
 			<div className="overflow-x-auto">
 				<div
-					className="w-full overflow-hidden rounded border-0 bg-card"
+					className={chartSurfaceBorderlessClassName}
 					style={{ minWidth: data.length > 14 ? 800 : undefined }}
 				>
 					<div className="p-0">
@@ -248,34 +258,25 @@ export function LLMTimeSeriesChart({
 										))}
 									</defs>
 
-									<CartesianGrid
-										stroke="var(--sidebar-border)"
-										strokeDasharray="2 4"
-										strokeOpacity={0.3}
-										vertical={false}
-									/>
+									<CartesianGrid {...chartCartesianGridDefault} />
 
 									<XAxis
 										axisLine={false}
 										dataKey="date"
-										tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+										tick={chartAxisTickDefault}
 										tickLine={false}
 									/>
 
 									<YAxis
 										axisLine={false}
-										tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+										tick={chartAxisTickDefault}
 										tickLine={false}
-										width={45}
+										width={chartAxisYWidthDefault}
 									/>
 
 									<Tooltip
 										content={<CustomTooltip />}
-										cursor={{
-											stroke: "var(--color-chart-1)",
-											strokeDasharray: "4 4",
-											strokeOpacity: 0.5,
-										}}
+										cursor={Chart.tooltipCursorLine}
 									/>
 
 									<Legend
@@ -287,17 +288,16 @@ export function LLMTimeSeriesChart({
 												: false;
 											return (
 												<span
-													className={cn(
-														"cursor-pointer text-xs",
+													className={chartRechartsInteractiveLegendLabelClassName(
 														isHidden
-															? "text-muted-foreground line-through opacity-50"
-															: "text-muted-foreground hover:text-foreground"
 													)}
 												>
 													{label}
 												</span>
 											);
 										}}
+										iconSize={chartRechartsLegendIconSize}
+										iconType="circle"
 										onClick={(payload: { value: string }) => {
 											const metric = METRICS.find(
 												(m) => m.label === payload.value
@@ -307,7 +307,7 @@ export function LLMTimeSeriesChart({
 											}
 										}}
 										verticalAlign="bottom"
-										wrapperStyle={{ paddingTop: "20px", fontSize: "12px" }}
+										wrapperStyle={chartRechartsLegendInteractiveWrapperStyle}
 									/>
 
 									{METRICS.map((metric) => (
