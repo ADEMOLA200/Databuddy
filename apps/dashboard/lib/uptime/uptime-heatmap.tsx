@@ -9,6 +9,7 @@ interface UptimeHeatmapProps {
 	data: {
 		date: string;
 		uptime_percentage?: number;
+		downtime_seconds?: number;
 	}[];
 	days?: number;
 	isLoading?: boolean;
@@ -30,12 +31,24 @@ export function UptimeHeatmap({
 			return { uptime: 0 };
 		}
 
-		const totalUptime = daysWithData.reduce(
-			(acc, curr) => acc + curr.uptime,
+		const secondsPerDay = 86_400;
+		const totalCalendarSeconds = daysWithData.length * secondsPerDay;
+		const totalDowntimeSeconds = daysWithData.reduce(
+			(acc, curr) => acc + curr.downtimeSeconds,
 			0
 		);
+
 		return {
-			uptime: totalUptime / daysWithData.length,
+			uptime:
+				totalCalendarSeconds > 0
+					? Math.min(
+							100,
+							(1 -
+								Math.min(totalDowntimeSeconds, totalCalendarSeconds) /
+									totalCalendarSeconds) *
+								100
+						)
+					: 0,
 		};
 	}, [heatmapData]);
 

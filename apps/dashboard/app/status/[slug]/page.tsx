@@ -1,10 +1,12 @@
+import { getStatusPageUrl } from "@/lib/app-url";
+import { publicRPCClient } from "@/lib/orpc-public";
 import type { Metadata } from "next";
+import { ThemeProvider } from "next-themes";
 import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { getStatusPageUrl } from "@/lib/app-url";
-import { publicRPCClient } from "@/lib/orpc-public";
 import { LastUpdated } from "./_components/last-updated";
+import { StatusNavbar } from "./_components/status-navbar";
 import { Status } from "./_components/status-page";
 import { TimeRangeSelector } from "./_components/time-range-selector";
 
@@ -60,10 +62,19 @@ export async function generateMetadata({
 		data.statusPage.description ||
 		`Real-time system status for ${data.organization.name}`;
 	const url = getStatusPageUrl(slug);
+	const faviconUrl = data.statusPage.faviconUrl;
 
 	return {
 		title,
 		description,
+		...(faviconUrl
+			? {
+					icons: {
+						icon: faviconUrl,
+						shortcut: faviconUrl,
+					},
+				}
+			: {}),
 		alternates: {
 			canonical: `/status/${slug}`,
 		},
@@ -82,6 +93,15 @@ export async function generateMetadata({
 	};
 }
 
+function resolveTheme(
+	theme: string | null | undefined
+): "system" | "light" | "dark" {
+	if (theme === "light" || theme === "dark") {
+		return theme;
+	}
+	return "system";
+}
+
 export default async function StatusPage({
 	params,
 	searchParams,
@@ -94,6 +114,10 @@ export default async function StatusPage({
 	if (!data) {
 		notFound();
 	}
+
+	const { statusPage: page } = data;
+	const theme = resolveTheme(page.theme);
+	const forcedTheme = theme === "system" ? undefined : theme;
 
 	const latestTimestamp = data.monitors.reduce<string | null>(
 		(latest, monitor) => {
@@ -111,9 +135,9 @@ export default async function StatusPage({
 	const jsonLd = {
 		"@context": "https://schema.org",
 		"@type": "WebPage",
-		name: `${data.statusPage.name || data.organization.name} Status`,
+		name: `${page.name || data.organization.name} Status`,
 		description:
-			data.statusPage.description ||
+			page.description ||
 			`Real-time system status for ${data.organization.name}`,
 		url: getStatusPageUrl(slug),
 		publisher: {
@@ -124,45 +148,88 @@ export default async function StatusPage({
 	};
 
 	return (
-		<>
-			<script
-				dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-				type="application/ld+json"
-			/>
-			<Status>
-				<Status.Header
-					description={data.statusPage.description ?? undefined}
-					name={data.statusPage.name}
+		<ThemeProvider
+			attribute="class"
+			defaultTheme={theme}
+			enableSystem={theme === "system"}
+			forcedTheme={forcedTheme}
+		>
+			<div className="flex h-dvh flex-col overflow-hidden bg-background">
+				<StatusNavbar
+					logoUrl={page.logoUrl}
+					name={page.name}
+					supportUrl={page.supportUrl}
+					websiteUrl={page.websiteUrl}
 				/>
-				<Status.Banner status={data.overallStatus} />
 
-				<Status.Section
-					action={
-						<Suspense>
-							<TimeRangeSelector currentDays={days} />
-						</Suspense>
-					}
-					title="Monitors"
-				>
-					{data.monitors.map((monitor) => (
-						<Status.MonitorCard
-							anchorId={slugify(monitor.name)}
-							currentStatus={monitor.currentStatus}
-							dailyData={monitor.dailyData}
-							days={days}
-							domain={monitor.domain ?? undefined}
-							id={monitor.id}
-							key={monitor.id}
-							lastCheckedAt={monitor.lastCheckedAt}
-							name={monitor.name}
-							uptimePercentage={monitor.uptimePercentage ?? undefined}
+				<main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+					<div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+						<script
+							dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+							type="application/ld+json"
 						/>
-					))}
-				</Status.Section>
 
-				<Status.Incidents />
-				<LastUpdated timestamp={latestTimestamp} />
-			</Status>
-		</>
+						{page.customCss ? (
+							<style dangerouslySetInnerHTML={{ __html: page.customCss }} />
+						) : null}
+
+						<Status>
+							<Status.Header
+								description={page.description ?? undefined}
+								logoUrl={page.logoUrl}
+								name={page.name}
+								websiteUrl={page.websiteUrl}
+							/>
+							<Status.Banner status={data.overallStatus} />
+
+							<Status.Section
+								action={
+									<Suspense>
+										<TimeRangeSelector currentDays={days} />
+									</Suspense>
+								}
+								title="Monitors"
+							>
+								{data.monitors.map((monitor) => (
+									<Status.MonitorCard
+										anchorId={slugify(monitor.name)}
+										currentStatus={monitor.currentStatus}
+										dailyData={monitor.dailyData}
+										days={days}
+										domain={monitor.domain ?? undefined}
+										id={monitor.id}
+										key={monitor.id}
+										lastCheckedAt={monitor.lastCheckedAt}
+										name={monitor.name}
+										uptimePercentage={monitor.uptimePercentage ?? undefined}
+									/>
+								))}
+							</Status.Section>
+
+							<Status.Incidents />
+							<LastUpdated timestamp={latestTimestamp} />
+						</Status>
+					</div>
+				</main>
+
+				{page.hideBranding ? null : (
+					<footer className="shrink-0 border-t bg-background">
+						<div className="mx-auto flex max-w-2xl items-center justify-center px-4 py-3 sm:px-6">
+							<p className="text-muted-foreground/60 text-xs">
+								Powered by{" "}
+								<a
+									className="text-muted-foreground transition-colors hover:text-foreground"
+									href="https://www.databuddy.cc"
+									rel="noopener noreferrer dofollow"
+									target="_blank"
+								>
+									Databuddy
+								</a>
+							</p>
+						</div>
+					</footer>
+				)}
+			</div>
+		</ThemeProvider>
 	);
 }

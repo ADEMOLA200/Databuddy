@@ -37,6 +37,13 @@ export interface StatusPage {
 	slug: string;
 	name: string;
 	description: string | null;
+	logoUrl?: string | null;
+	faviconUrl?: string | null;
+	websiteUrl?: string | null;
+	supportUrl?: string | null;
+	theme?: string | null;
+	hideBranding?: boolean;
+	customCss?: string | null;
 	monitorCount: number;
 	createdAt: Date | string;
 	updatedAt: Date | string;

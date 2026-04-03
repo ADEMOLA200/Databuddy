@@ -25,6 +25,9 @@ const UPTIME_TABLE = "uptime.uptime_monitor";
 const dailyUptimeSchema = z.object({
 	date: z.string(),
 	uptime_percentage: z.number().optional(),
+	total_checks: z.number().optional(),
+	successful_checks: z.number().optional(),
+	downtime_seconds: z.number().optional(),
 	avg_response_time: z.number().optional(),
 	p95_response_time: z.number().optional(),
 });
@@ -39,16 +42,28 @@ const monitorSchema = z.object({
 	lastCheckedAt: z.string().nullable(),
 });
 
+const statusPageCustomizationSchema = z.object({
+	logoUrl: z.string().nullable(),
+	faviconUrl: z.string().nullable(),
+	websiteUrl: z.string().nullable(),
+	supportUrl: z.string().nullable(),
+	theme: z.enum(["system", "light", "dark"]).nullable(),
+	hideBranding: z.boolean(),
+	customCss: z.string().nullable(),
+});
+
 const statusPageOutputSchema = z.object({
 	organization: z.object({
 		name: z.string(),
 		slug: z.string(),
 		logo: z.string().nullable(),
 	}),
-	statusPage: z.object({
-		name: z.string(),
-		description: z.string().nullable(),
-	}),
+	statusPage: z
+		.object({
+			name: z.string(),
+			description: z.string().nullable(),
+		})
+		.merge(statusPageCustomizationSchema),
 	overallStatus: z.enum(["operational", "degraded", "outage"]),
 	monitors: z.array(monitorSchema),
 });
@@ -81,6 +96,9 @@ interface DailyRow {
 	site_id: string;
 	date: string;
 	uptime_percentage: number;
+	total_checks: number;
+	successful_checks: number;
+	downtime_seconds: number;
 	avg_response_time: number;
 	p95_response_time: number;
 }
@@ -103,6 +121,13 @@ async function _fetchStatusPageData(
 			orgLogo: organization.logo,
 			statusPageName: statusPages.name,
 			statusPageDescription: statusPages.description,
+			logoUrl: statusPages.logoUrl,
+			faviconUrl: statusPages.faviconUrl,
+			websiteUrl: statusPages.websiteUrl,
+			supportUrl: statusPages.supportUrl,
+			theme: statusPages.theme,
+			hideBranding: statusPages.hideBranding,
+			customCss: statusPages.customCss,
 			scheduleId: uptimeSchedules.id,
 			websiteId: uptimeSchedules.websiteId,
 			scheduleName: uptimeSchedules.name,
@@ -137,9 +162,17 @@ async function _fetchStatusPageData(
 		logo: rows[0].orgLogo,
 	};
 
+	const first = rows[0];
 	const statusPageInfo = {
-		name: rows[0].statusPageName,
-		description: rows[0].statusPageDescription,
+		name: first.statusPageName,
+		description: first.statusPageDescription,
+		logoUrl: first.logoUrl,
+		faviconUrl: first.faviconUrl,
+		websiteUrl: first.websiteUrl,
+		supportUrl: first.supportUrl,
+		theme: first.theme,
+		hideBranding: first.hideBranding,
+		customCss: first.customCss,
 	};
 
 	const schedules = rows
@@ -182,18 +215,46 @@ async function _fetchStatusPageData(
 		siteIds.length > 0
 			? chQuery<DailyRow>(
 					`SELECT
+					site_id,
+					date,
+					round(100 * (1 - least(downtime_seconds, 86400) / 86400), 2) as uptime_percentage,
+					total_checks,
+					successful_checks,
+					downtime_seconds,
+					avg_response_time,
+					p95_response_time
+				FROM (
+					SELECT
 						site_id,
-						toDate(timestamp) as date,
-						if((countIf(status = 1) + countIf(status = 0)) = 0, 0, round((countIf(status = 1) / (countIf(status = 1) + countIf(status = 0))) * 100, 2)) as uptime_percentage,
+						toDate(ts) as date,
+						toUInt32(countIf(status = 1) + countIf(status = 0)) as total_checks,
+						toUInt32(countIf(status = 1)) as successful_checks,
+						toUInt32(sumIf(
+							least(dateDiff('second', ts, next_ts), 86400),
+							status = 0
+						)) as downtime_seconds,
 						round(avg(total_ms), 2) as avg_response_time,
 						round(quantile(0.95)(total_ms), 2) as p95_response_time
-					FROM ${UPTIME_TABLE}
-					WHERE
-						site_id IN ({siteIds:Array(String)})
-						AND timestamp >= toDateTime({startDate:String})
-						AND timestamp <= toDateTime(concat({endDate:String}, ' 23:59:59'))
+					FROM (
+						SELECT
+							site_id,
+							timestamp as ts,
+							status,
+							total_ms,
+							leadInFrame(timestamp, 1, now()) OVER (
+								PARTITION BY site_id
+								ORDER BY timestamp ASC
+								ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+							) as next_ts
+						FROM ${UPTIME_TABLE}
+						WHERE
+							site_id IN ({siteIds:Array(String)})
+							AND timestamp >= toDateTime({startDate:String})
+							AND timestamp <= toDateTime(concat({endDate:String}, ' 23:59:59'))
+					)
 					GROUP BY site_id, date
-					ORDER BY site_id, date ASC`,
+				)
+				ORDER BY site_id, date ASC`,
 					{ siteIds, startDate, endDate }
 				)
 			: Promise.resolve([]),
@@ -248,10 +309,21 @@ async function _fetchStatusPageData(
 					: "unknown"
 			: "unknown";
 
+		const secondsPerDay = 86_400;
+		const totalCalendarSeconds = dailyData.length * secondsPerDay;
+		const totalDowntimeSeconds = dailyData.reduce(
+			(sum, d) => sum + d.downtime_seconds,
+			0
+		);
 		const uptimePercentageRaw =
-			dailyData.length > 0
-				? dailyData.reduce((sum, d) => sum + d.uptime_percentage, 0) /
-					dailyData.length
+			totalCalendarSeconds > 0
+				? Math.min(
+						100,
+						(1 -
+							Math.min(totalDowntimeSeconds, totalCalendarSeconds) /
+								totalCalendarSeconds) *
+							100
+					)
 				: 0;
 
 		return {
@@ -272,6 +344,15 @@ async function _fetchStatusPageData(
 				uptime_percentage: schedule.hideUptimePercentage
 					? undefined
 					: d.uptime_percentage,
+				total_checks: schedule.hideUptimePercentage
+					? undefined
+					: d.total_checks,
+				successful_checks: schedule.hideUptimePercentage
+					? undefined
+					: d.successful_checks,
+				downtime_seconds: schedule.hideUptimePercentage
+					? undefined
+					: d.downtime_seconds,
 				avg_response_time: schedule.hideLatency
 					? undefined
 					: d.avg_response_time,
@@ -422,6 +503,13 @@ export const statusPageRouter = {
 				name: z.string(),
 				slug: z.string(),
 				description: z.string().optional(),
+				logoUrl: z.string().url().nullish(),
+				faviconUrl: z.string().url().nullish(),
+				websiteUrl: z.string().url().nullish(),
+				supportUrl: z.string().url().nullish(),
+				theme: z.enum(["system", "light", "dark"]).optional(),
+				hideBranding: z.boolean().optional(),
+				customCss: z.string().nullish(),
 			})
 		)
 		.handler(async ({ context, input }) => {
@@ -447,6 +535,13 @@ export const statusPageRouter = {
 				name: input.name,
 				slug: input.slug,
 				description: input.description,
+				logoUrl: input.logoUrl ?? null,
+				faviconUrl: input.faviconUrl ?? null,
+				websiteUrl: input.websiteUrl ?? null,
+				supportUrl: input.supportUrl ?? null,
+				theme: input.theme ?? "system",
+				hideBranding: input.hideBranding ?? false,
+				customCss: input.customCss ?? null,
 			});
 
 			return db.query.statusPages.findFirst({
@@ -467,6 +562,13 @@ export const statusPageRouter = {
 				name: z.string().optional(),
 				slug: z.string().optional(),
 				description: z.string().optional(),
+				logoUrl: z.string().url().nullish(),
+				faviconUrl: z.string().url().nullish(),
+				websiteUrl: z.string().url().nullish(),
+				supportUrl: z.string().url().nullish(),
+				theme: z.enum(["system", "light", "dark"]).optional(),
+				hideBranding: z.boolean().optional(),
+				customCss: z.string().nullish(),
 			})
 		)
 		.handler(async ({ context, input }) => {
@@ -502,6 +604,21 @@ export const statusPageRouter = {
 					...(input.description !== undefined && {
 						description: input.description,
 					}),
+					...(input.logoUrl !== undefined && { logoUrl: input.logoUrl }),
+					...(input.faviconUrl !== undefined && {
+						faviconUrl: input.faviconUrl,
+					}),
+					...(input.websiteUrl !== undefined && {
+						websiteUrl: input.websiteUrl,
+					}),
+					...(input.supportUrl !== undefined && {
+						supportUrl: input.supportUrl,
+					}),
+					...(input.theme !== undefined && { theme: input.theme }),
+					...(input.hideBranding !== undefined && {
+						hideBranding: input.hideBranding,
+					}),
+					...(input.customCss !== undefined && { customCss: input.customCss }),
 					updatedAt: new Date(),
 				})
 				.where(eq(statusPages.id, input.statusPageId));

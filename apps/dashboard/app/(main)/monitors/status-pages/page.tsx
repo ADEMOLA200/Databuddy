@@ -33,12 +33,9 @@ export default function StatusPagesListPage() {
 		useOrganizationsContext();
 	const queryClient = useQueryClient();
 	const [isSheetOpen, setIsSheetOpen] = useState(false);
-	const [editingStatusPage, setEditingStatusPage] = useState<{
-		id: string;
-		name: string;
-		slug: string;
-		description: string | null;
-	} | null>(null);
+	const [editingStatusPage, setEditingStatusPage] = useState<StatusPage | null>(
+		null
+	);
 	const [statusPageToDelete, setStatusPageToDelete] =
 		useState<StatusPage | null>(null);
 
@@ -68,12 +65,7 @@ export default function StatusPagesListPage() {
 	};
 
 	const handleEdit = (statusPage: StatusPage) => {
-		setEditingStatusPage({
-			id: statusPage.id,
-			name: statusPage.name,
-			slug: statusPage.slug,
-			description: statusPage.description,
-		});
+		setEditingStatusPage(statusPage);
 		setIsSheetOpen(true);
 	};
 

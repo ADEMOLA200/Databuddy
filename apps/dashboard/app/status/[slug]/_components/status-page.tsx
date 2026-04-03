@@ -4,6 +4,7 @@ import {
 	WarningCircleIcon,
 	XCircleIcon,
 } from "@phosphor-icons/react/ssr";
+import Image from "next/image";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { LastChecked } from "./last-checked";
@@ -29,6 +30,8 @@ function StatusRoot({ children, className }: StatusRootProps) {
 interface StatusHeaderProps {
 	name: string;
 	description?: string;
+	logoUrl?: string | null;
+	websiteUrl?: string | null;
 	children?: ReactNode;
 	className?: string;
 }
@@ -36,18 +39,45 @@ interface StatusHeaderProps {
 function StatusHeader({
 	name,
 	description = "System status and uptime",
+	logoUrl,
+	websiteUrl,
 	children,
 	className,
 }: StatusHeaderProps) {
+	const heading = (
+		<h1 className="text-balance font-semibold text-2xl tracking-tight">
+			{name}
+		</h1>
+	);
+
 	return (
 		<div
 			className={cn("flex items-center gap-3.5", className)}
 			data-slot="status-header"
 		>
-			<div>
-				<h1 className="text-balance font-semibold text-2xl tracking-tight">
-					{name}
-				</h1>
+			{logoUrl ? (
+				<Image
+					alt=""
+					className="size-10 shrink-0 rounded object-contain"
+					height={40}
+					src={logoUrl}
+					unoptimized
+					width={40}
+				/>
+			) : null}
+			<div className="min-w-0 flex-1">
+				{websiteUrl ? (
+					<a
+						className="transition-opacity hover:opacity-80"
+						href={websiteUrl}
+						rel="noopener noreferrer"
+						target="_blank"
+					>
+						{heading}
+					</a>
+				) : (
+					heading
+				)}
 				<p className="mt-0.5 text-pretty text-muted-foreground text-sm">
 					{description}
 				</p>
